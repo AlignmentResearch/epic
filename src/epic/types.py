@@ -1,5 +1,5 @@
 import abc
-from typing import Callable, ParamSpec, Protocol, Union
+from typing import Protocol, Union
 
 import numpy.typing as npt
 

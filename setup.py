@@ -9,6 +9,12 @@ def get_readme() -> str:
         return f.read()
 
 
+IMITATION_REQUIRE = [
+    'imitation @ git+https://github.com/HumanCompatibleAI/imitation.git@master',
+    "stable_baselines3",
+    "seals @ git+https://github.com/HumanCompatibleAI/seals.git@master",
+]
+
 TESTS_REQUIRE = [
     "pytest",
     "pytest-cov",
@@ -19,7 +25,9 @@ TESTS_REQUIRE = [
     "flake8",
     "pylint",
     "black",
+    *IMITATION_REQUIRE,
 ]
+
 
 DEV_REQUIRE = [
     "isort",
@@ -41,12 +49,12 @@ setup(
     install_requires=[
         'numpy',
         'torch',
-        'imitation @ git+https://github.com/HumanCompatibleAI/imitation.git@master',
         ],
     tests_require=TESTS_REQUIRE,
     extras_require={
         "dev": DEV_REQUIRE,
         "test": TESTS_REQUIRE,
+        "imitation": IMITATION_REQUIRE,
     },
     url='https://github.com/HumanCompatibleAI/epic',
     license="MIT",

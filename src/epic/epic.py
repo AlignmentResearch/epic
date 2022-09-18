@@ -1,5 +1,3 @@
-from typing import Optional
-
 import gym
 import numpy as np
 
@@ -21,24 +19,10 @@ class EPIC:
         state_sampler: types.Sampler,
         action_sampler: types.Sampler,
         discount_factor: float,
-        coverage_sampler: Optional[types.Sampler] = None,
     ):
         self.state_sampler = state_sampler
         self.action_sampler = action_sampler
-        # self.coverage_sampler = coverage_sampler or self.build_coverage_sampler()
         self.discount_factor = discount_factor
-
-    # def build_coverage_sampler(self):
-    #     """Creates a coverage sampler from state and action samplers.
-    #
-    #     If no coverage sampler is provided, we assume that the coverage distribution
-    #     is the product distribution from (state, action, next_state) according
-    #     to the distributions induced by the state and action samplers.
-    #     """
-    #     state_sample = self.state_sampler.sample()
-    #     action_sample = self.action_sampler.sample()
-    #     next_state_sample = self.state_sampler.sample()
-    #     # take cartesian product of
 
     def canonicalize(self, x: types.RewardFunction, /) -> types.RewardFunction:
         def canonical_reward_fn(state, action, next_state, /):
@@ -48,8 +32,9 @@ class EPIC:
             # ``state``, ``action``, ``next_state`` correspond to s, a, s' in the paper
             # and ``state_sample``, ``action_sample``, ``next_state_sample``
             # correspond to S, A, S' in the paper.
-            x_kw = utils.keywordize_rew_fn_call(x)  # call x using keyword arguments
-            x_cart = utils.cartesian_call_wrapper(x_kw)  # automatic cartesian product
+            x_kw = utils.keywordize_rew_fn(x)  # call x using keyword arguments
+            # automatically take the cartesian product of independent batches.
+            x_cart = utils.product_batch_wrapper(x_kw)
 
             # E[R(s', A, S')]. We sample action and next state,
             # and pass in ``next_state`` as the state.
@@ -84,7 +69,7 @@ class EPIC:
 
         return canonical_reward_fn
 
-    def distance(
+    def _distance(
         self, x_canonical: types.RewardFunction, y_canonical: types.RewardFunction, /
     ) -> float:
         state_sample = self.state_sampler.sample()
@@ -94,9 +79,17 @@ class EPIC:
         x_samples = x_canonical(state_sample, action_sample, next_state_sample)
         y_samples = y_canonical(state_sample, action_sample, next_state_sample)
 
-        return np.sqrt(1 - np.corrcoef(x_samples, y_samples))
+        return np.sqrt(1 - np.corrcoef(x_samples, y_samples)[0, 1])
 
-    def epic(self, x: types.RewardFunction, y: types.RewardFunction, /) -> float:
+    def distance(self, x: types.RewardFunction, y: types.RewardFunction, /) -> float:
         x_canonical = self.canonicalize(x)
         y_canonical = self.canonicalize(y)
-        return self.distance(x_canonical, y_canonical)
+        return self._distance(x_canonical, y_canonical)
+
+
+def epic_distance(x, y, /, *, state_sampler, action_sampler, discount_factor):
+    return EPIC(
+        state_sampler=state_sampler,
+        action_sampler=action_sampler,
+        discount_factor=discount_factor,
+    ).distance(x, y)

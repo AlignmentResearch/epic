@@ -92,8 +92,15 @@ def product_batch_call(
     )
 
 
-def product_batch_wrapper(function: Fn):
+def product_batch_wrapper(function: Fn, nested=True):
     def wrapper(*args: Dict[str, np.ndarray]):
-        return product_batch_call(function, *args)
+        if nested:
+            return product_batch_call(function, *args)
+        else:
+            # merge all arguments into a single dictionary
+            merged_args = {}
+            for arg_group in args:
+                merged_args.update(arg_group)
+            return function(**merged_args)
 
     return wrapper

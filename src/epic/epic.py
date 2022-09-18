@@ -24,17 +24,38 @@ class EPIC:
         self.action_sampler = action_sampler
         self.discount_factor = discount_factor
 
-    def canonicalize(self, x: types.RewardFunction, /) -> types.RewardFunction:
+    def canonicalize(self, x: types.RewardFunction, /, nested=True) -> types.RewardFunction:
+        """Canonicalize a reward function.
+
+        Applies the canonically shaped reward transformation defined in 4.1 of
+        https://arxiv.org/pdf/2006.13900.pdf.
+
+        Args:
+            x: The reward function to canonicalize.
+            nested: Whether sampling is nested over any expectation operators, i.e.
+                take the cartesian product of the state,action,next state samples
+                provided when the reward function is called with the samples used
+                to compute the expectation. If not using nested sampling, the
+                batch size when calling the canonicalized reward function must be the
+                same as the batch size of the samples used to compute the expectation.
+
+
+        """
         def canonical_reward_fn(state, action, next_state, /):
             state_sample = self.state_sampler.sample()
             action_sample = self.action_sampler.sample()
             next_state_sample = self.state_sampler.sample()
+            assert state_sample.shape[0] == action_sample.shape[0] == next_state_sample.shape[0]
+            assert state.shape[0] == action.shape[0] == next_state.shape[0]
+            if not nested:
+                assert state.shape[0] == state_sample.shape[0]
+
             # ``state``, ``action``, ``next_state`` correspond to s, a, s' in the paper
             # and ``state_sample``, ``action_sample``, ``next_state_sample``
             # correspond to S, A, S' in the paper.
             x_kw = utils.keywordize_rew_fn(x)  # call x using keyword arguments
             # automatically take the cartesian product of independent batches.
-            x_cart = utils.product_batch_wrapper(x_kw)
+            x_cart = utils.product_batch_wrapper(x_kw, nested=nested)
 
             # E[R(s', A, S')]. We sample action and next state,
             # and pass in ``next_state`` as the state.
@@ -81,15 +102,26 @@ class EPIC:
 
         return np.sqrt(1 - np.corrcoef(x_samples, y_samples)[0, 1])
 
-    def distance(self, x: types.RewardFunction, y: types.RewardFunction, /) -> float:
-        x_canonical = self.canonicalize(x)
-        y_canonical = self.canonicalize(y)
+    def distance(self, x: types.RewardFunction, y: types.RewardFunction, /, nested=True) -> float:
+        """Compute the distance between two reward functions.
+
+        Args:
+            x: The first reward function.
+            y: The second reward function.
+            nested: Whether sampling is nested over any expectation operators when
+                computing the canonicalization. See ``canonicalize`` for more details.
+
+        Returns:
+            The distance between the two reward functions.
+        """
+        x_canonical = self.canonicalize(x, nested=nested)
+        y_canonical = self.canonicalize(y, nested=nested)
         return self._distance(x_canonical, y_canonical)
 
 
-def epic_distance(x, y, /, *, state_sampler, action_sampler, discount_factor):
+def epic_distance(x, y, /, *, state_sampler, action_sampler, discount_factor, nested):
     return EPIC(
         state_sampler=state_sampler,
         action_sampler=action_sampler,
         discount_factor=discount_factor,
-    ).distance(x, y)
+    ).distance(x, y, nested=nested)

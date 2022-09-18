@@ -6,7 +6,7 @@ from typing_extensions import ParamSpec
 from epic import types
 
 
-def keywordize_rew_fn_call(reward_fn: types.RewardFunction):
+def keywordize_rew_fn(reward_fn: types.RewardFunction):
     def wrapper(*, state: np.ndarray, action: np.ndarray, next_state: np.ndarray):
         return reward_fn(state, action, next_state)
 
@@ -40,7 +40,7 @@ def multidim_batch_call(
     )
 
 
-def cartesian_batch_call(
+def product_batch_call(
     function: Fn, *grouped_arguments: Dict[str, np.ndarray]
 ) -> np.ndarray:
     arg_names = [
@@ -92,8 +92,8 @@ def cartesian_batch_call(
     )
 
 
-def cartesian_call_wrapper(function: Fn):
+def product_batch_wrapper(function: Fn):
     def wrapper(*args: Dict[str, np.ndarray]):
-        return cartesian_batch_call(function, *args)
+        return product_batch_call(function, *args)
 
     return wrapper

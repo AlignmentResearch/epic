@@ -1,30 +1,13 @@
-import gym
 import numpy as np
 
 from epic import types, utils
+from epic.distances import base
 
 
-class GymSampler(types.Sampler):
-    def __init__(self, space: gym.Space, n_samples: int):
-        self.space = space
-        self.n_samples = n_samples
-
-    def sample(self):
-        return np.array([self.space.sample() for _ in range(self.n_samples)])
-
-
-class EPIC:
-    def __init__(
-        self,
-        state_sampler: types.Sampler,
-        action_sampler: types.Sampler,
-        discount_factor: float,
-    ):
-        self.state_sampler = state_sampler
-        self.action_sampler = action_sampler
-        self.discount_factor = discount_factor
-
-    def canonicalize(self, x: types.RewardFunction, /, nested=True) -> types.RewardFunction:
+class EPIC(base.Distance):
+    def canonicalize(
+        self, x: types.RewardFunction, /, nested=True
+    ) -> types.RewardFunction:
         """Canonicalize a reward function.
 
         Applies the canonically shaped reward transformation defined in 4.1 of
@@ -41,11 +24,16 @@ class EPIC:
 
 
         """
+
         def canonical_reward_fn(state, action, next_state, /):
             state_sample = self.state_sampler.sample()
             action_sample = self.action_sampler.sample()
             next_state_sample = self.state_sampler.sample()
-            assert state_sample.shape[0] == action_sample.shape[0] == next_state_sample.shape[0]
+            assert (
+                state_sample.shape[0]
+                == action_sample.shape[0]
+                == next_state_sample.shape[0]
+            )
             assert state.shape[0] == action.shape[0] == next_state.shape[0]
             if not nested:
                 assert state.shape[0] == state_sample.shape[0]
@@ -102,24 +90,29 @@ class EPIC:
 
         return np.sqrt(1 - np.corrcoef(x_samples, y_samples)[0, 1])
 
-    def distance(self, x: types.RewardFunction, y: types.RewardFunction, /, nested=True) -> float:
-        """Compute the distance between two reward functions.
-
-        Args:
-            x: The first reward function.
-            y: The second reward function.
-            nested: Whether sampling is nested over any expectation operators when
-                computing the canonicalization. See ``canonicalize`` for more details.
-
-        Returns:
-            The distance between the two reward functions.
-        """
-        x_canonical = self.canonicalize(x, nested=nested)
-        y_canonical = self.canonicalize(y, nested=nested)
-        return self._distance(x_canonical, y_canonical)
-
 
 def epic_distance(x, y, /, *, state_sampler, action_sampler, discount_factor, nested):
+    """Compute the EPIC distance between two reward functions.
+
+    Helper for automatically instantiating the EPIC Distance class and computing
+    the distance between two reward functions.
+
+    Do not ue this helper if you want to compute distances between multiple pairs
+    of reward functions. Instead, instantiate the EPIC class and call the
+    ``distance`` method on the instance multiple times.
+
+    Args:
+        x: The first reward function.
+        y: The second reward function.
+        state_sampler: A sampler for the state space.
+        action_sampler: A sampler for the action space.
+        discount_factor: The discount factor of the MDP.
+        nested: Whether sampling is nested over any expectation operators. See
+            ``EPIC.canonicalize`` for more details.
+
+    Returns:
+        The EPIC distance between the two reward functions.
+    """
     return EPIC(
         state_sampler=state_sampler,
         action_sampler=action_sampler,

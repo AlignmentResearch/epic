@@ -1,4 +1,4 @@
-from typing import Dict, Protocol, Sequence, TypedDict
+from typing import Dict, Protocol, TypedDict
 
 import numpy as np
 from typing_extensions import ParamSpec

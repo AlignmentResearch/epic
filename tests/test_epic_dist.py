@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from epic.distances import epic
-from epic.samplers.gym_sampler import GymSampler
+from epic.samplers import GymSampler
 import gym
 
 

@@ -1,7 +1,8 @@
 import abc
-from typing import Protocol, Union
+from typing import Protocol, Union, Generic, TypeVar, Tuple
 
 import numpy.typing as npt
+import numpy as np
 
 
 class RewardFunction(Protocol):
@@ -15,6 +16,7 @@ class RewardFunction(Protocol):
         state: npt.NDArray,
         action: npt.NDArray,
         next_state: npt.NDArray,
+        done: npt.NDArray[np.bool_],
         /,
     ) -> npt.NDArray:
         """Compute rewards for a batch of transitions.
@@ -35,6 +37,7 @@ class CoverageDistribution(Protocol):
         state: npt.NDArray,
         action: npt.NDArray,
         next_state: npt.NDArray,
+        done: npt.NDArray[np.bool_],
         /,
     ) -> npt.NDArray:
         """Compute coverage for a batch of transitions.
@@ -53,7 +56,17 @@ Coverage = Union[
 ]
 
 
-class Sampler:
-    @abc.abstractmethod
-    def sample(self) -> npt.NDArray:
+T_co = TypeVar("T_co", covariant=True)
+
+
+class Sampler(Protocol[T_co]):
+    def sample(self) -> T_co:
         pass
+
+
+class ActionSampler(Sampler[npt.NDArray]):
+    pass
+
+
+class StateSampler(Sampler[Tuple[npt.NDArray[np.bool_], npt.NDArray]]):
+    pass

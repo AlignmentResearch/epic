@@ -7,8 +7,8 @@ from epic import types
 
 
 def keywordize_rew_fn(reward_fn: types.RewardFunction):
-    def wrapper(*, state: np.ndarray, action: np.ndarray, next_state: np.ndarray):
-        return reward_fn(state, action, next_state)
+    def wrapper(*, state: np.ndarray, action: np.ndarray, next_state: np.ndarray, done: np.ndarray):
+        return reward_fn(state, action, next_state, done)
 
     return wrapper
 

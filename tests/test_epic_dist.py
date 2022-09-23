@@ -1,19 +1,19 @@
 import numpy as np
 import pytest
 from epic.distances import epic
-from epic.samplers import GymSampler
+from epic.samplers import GymSpaceSampler, DummyGymStateSampler
 import gym
 
 
-def rew_fn_1(state, action, next_state):
+def rew_fn_1(state, action, next_state, _):
     return state + next_state + action
 
 
-def rew_fn_2(state, action, next_state):
+def rew_fn_2(state, action, next_state, _):
     return state**2 + next_state**2 + 2 * action
 
 
-def rew_fn_1_potential_shaping(state, action, next_state):
+def rew_fn_1_potential_shaping(state, action, next_state, _):
     return state + next_state + action + next_state / 3 - state / 3
 
 
@@ -25,8 +25,8 @@ def test_epic_dist_no_errors():
     y = rew_fn_2
 
     dist = epic.EPIC(
-        state_sampler=GymSampler(space=state_space, n_samples=100),
-        action_sampler=GymSampler(space=action_space, n_samples=100),
+        state_sampler=DummyGymStateSampler(space=state_space, n_samples=100),
+        action_sampler=GymSpaceSampler(space=action_space, n_samples=100),
         discount_factor=1,
     ).distance(x, y)
 
@@ -41,8 +41,8 @@ def test_epic_dist_reward_equivalence():
     y = rew_fn_1_potential_shaping
 
     dist = epic.EPIC(
-        state_sampler=GymSampler(space=state_space, n_samples=100),
-        action_sampler=GymSampler(space=action_space, n_samples=100),
+        state_sampler=DummyGymStateSampler(space=state_space, n_samples=100),
+        action_sampler=GymSpaceSampler(space=action_space, n_samples=100),
         discount_factor=1,
     ).distance(x, y)
 
@@ -57,8 +57,8 @@ def test_epic_dist_no_nested():
     y = rew_fn_2
 
     dist = epic.EPIC(
-        state_sampler=GymSampler(space=state_space, n_samples=1000),
-        action_sampler=GymSampler(space=action_space, n_samples=1000),
+        state_sampler=DummyGymStateSampler(space=state_space, n_samples=1000),
+        action_sampler=GymSpaceSampler(space=action_space, n_samples=1000),
         discount_factor=1,
     ).distance(x, y, nested=False)
 

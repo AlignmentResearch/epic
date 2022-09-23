@@ -6,8 +6,8 @@ from epic import types
 class Distance(abc.ABC):
     def __init__(
         self,
-        state_sampler: types.Sampler,
-        action_sampler: types.Sampler,
+        state_sampler: types.StateSampler,
+        action_sampler: types.ActionSampler,
         discount_factor: float,
     ):
         self.state_sampler = state_sampler

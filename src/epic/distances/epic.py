@@ -25,10 +25,10 @@ class EPIC(base.Distance):
 
         """
 
-        def canonical_reward_fn(state, action, next_state, /):
-            state_sample = self.state_sampler.sample()
+        def canonical_reward_fn(state, action, next_state, done, /):
+            _, state_sample = self.state_sampler.sample()
             action_sample = self.action_sampler.sample()
-            next_state_sample = self.state_sampler.sample()
+            done_sample, next_state_sample = self.state_sampler.sample()
             assert (
                 state_sample.shape[0]
                 == action_sample.shape[0]
@@ -50,7 +50,7 @@ class EPIC(base.Distance):
             # We make this the first dimension to then take the mean.
             term_1 = np.mean(
                 x_cart(
-                    {"action": action_sample, "next_state": next_state_sample},
+                    {"action": action_sample, "next_state": next_state_sample, "done": done_sample},
                     {"state": next_state},
                 ),
                 axis=0,
@@ -59,7 +59,7 @@ class EPIC(base.Distance):
             # Now it's simply ``state`` that we pass in as the state.
             term_2 = np.mean(
                 x_cart(
-                    {"action": action_sample, "next_state": next_state_sample},
+                    {"action": action_sample, "next_state": next_state_sample, "done": done_sample},
                     {"state": state},
                 ),
                 axis=0,
@@ -67,10 +67,10 @@ class EPIC(base.Distance):
             # E[R(S, A, S')]. We sample state, action, and next state.
             # This does not require cartesian product over batches
             # as it's not a random variable.
-            term_3 = np.mean(x(state_sample, action_sample, next_state_sample), axis=0)
+            term_3 = np.mean(x(state_sample, action_sample, next_state_sample, done_sample), axis=0)
 
             return (
-                x(state, action, next_state)
+                x(state, action, next_state, done)
                 + self.discount_factor * term_1
                 - term_2
                 - self.discount_factor * term_3
@@ -81,12 +81,12 @@ class EPIC(base.Distance):
     def _distance(
         self, x_canonical: types.RewardFunction, y_canonical: types.RewardFunction, /
     ) -> float:
-        state_sample = self.state_sampler.sample()
+        _, state_sample = self.state_sampler.sample()
         action_sample = self.action_sampler.sample()
-        next_state_sample = self.state_sampler.sample()
+        done_sample, next_state_sample = self.state_sampler.sample()
 
-        x_samples = x_canonical(state_sample, action_sample, next_state_sample)
-        y_samples = y_canonical(state_sample, action_sample, next_state_sample)
+        x_samples = x_canonical(state_sample, action_sample, next_state_sample, done_sample)
+        y_samples = y_canonical(state_sample, action_sample, next_state_sample, done_sample)
 
         return np.sqrt(1 - np.corrcoef(x_samples, y_samples)[0, 1])
 

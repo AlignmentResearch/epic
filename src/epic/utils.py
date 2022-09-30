@@ -7,7 +7,13 @@ from epic import types
 
 
 def keywordize_rew_fn(reward_fn: types.RewardFunction):
-    def wrapper(*, state: np.ndarray, action: np.ndarray, next_state: np.ndarray, done: np.ndarray):
+    def wrapper(
+        *,
+        state: np.ndarray,
+        action: np.ndarray,
+        next_state: np.ndarray,
+        done: np.ndarray,
+    ):
         return reward_fn(state, action, next_state, done)
 
     return wrapper
@@ -40,6 +46,19 @@ def multidim_batch_call(
     )
 
 
+def multidim_rew_fn(function: types.RewardFunction):
+    function = keywordize_rew_fn(function)
+
+    def wrapper(state, action, next_state, done, batch_dims: int = 1):
+        return multidim_batch_call(
+            function,
+            dict(state=state, action=action, next_state=next_state, done=done),
+            num_batch_dims=batch_dims,
+        )
+
+    return wrapper
+
+
 def product_batch_call(
     function: Fn, *grouped_arguments: Dict[str, np.ndarray]
 ) -> np.ndarray:
@@ -48,16 +67,16 @@ def product_batch_call(
         for arg_group in grouped_arguments
         for arg_name in list(arg_group.keys())
     ]
-    assert len(arg_names) == len(
-        set(arg_names)
-    ), "Argument names must not be unique within and across groups"
+    if len(arg_names) != len(set(arg_names)):
+        raise ValueError("Argument names must be unique within and across groups")
 
     batch_lengths = []
     for arg_group in grouped_arguments:
         shapes = [arg_val.shape[0] for arg_val in arg_group.values()]
-        assert (
-            len(set(shapes)) == 1
-        ), "All arrays in the same axis must have the same number of batch items"
+        if len(set(shapes)) != 1:
+            raise ValueError(
+                "All arrays in the same axis must have the same number of batch items"
+            )
         batch_lengths.append(shapes[0])
 
     class Info(TypedDict):
@@ -104,3 +123,25 @@ def product_batch_wrapper(function: Fn, nested=True):
             return function(**merged_args)
 
     return wrapper
+
+
+def broadcast(state, action, next_state, done, /, n_samples_can):
+    """Tiles the state, action, next_state, and done arrays along the first axis"""
+    return (
+        np.swapaxes(np.broadcast_to(state, (n_samples_can, *state.shape)), 1, 0),
+        np.swapaxes(np.broadcast_to(action, (n_samples_can, *action.shape)), 1, 0),
+        np.swapaxes(
+            np.broadcast_to(next_state, (n_samples_can, *next_state.shape)), 1, 0
+        ),
+        np.swapaxes(np.broadcast_to(done, (n_samples_can, *done.shape)), 1, 0),
+    )
+
+
+def reshape(state, action, next_state, done, /, n_samples_cov):
+    """Reshapes the state, action, next_state, and done arrays to have shape (n_samples_cov, -1)"""
+    return (
+        state.reshape(n_samples_cov, -1),
+        action.reshape(n_samples_cov, -1),
+        next_state.reshape(n_samples_cov, -1),
+        done.reshape(n_samples_cov, -1),
+    )

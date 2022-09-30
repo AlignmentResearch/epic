@@ -16,18 +16,20 @@ class Distance(abc.ABC):
 
     @abc.abstractmethod
     def canonicalize(
-        self, x: types.RewardFunction, /, nested=True
+        self,
+        reward_function: types.RewardFunction,
+        /,
+        n_samples_cov: int,
+        n_samples_can: int,
     ) -> types.RewardFunction:
         """Canonicalize a reward function.
 
         Args:
-            x: The reward function to canonicalize.
-            nested: Whether sampling is nested over any expectation operators, i.e.
-                take the cartesian product of the state,action,next state samples
-                provided when the reward function is called with the samples used
-                to compute the expectation. If not using nested sampling, the
-                batch size when calling the canonicalized reward function must be the
-                same as the batch size of the samples used to compute the expectation.
+            reward_function: The reward function to canonicalize.
+            n_samples_cov: The number of samples to draw from the coverage distribution.
+            n_samples_can: The number of samples to draw for the canonicalization step
+                for each sample of the coverage distribution. The total number of
+                samples drawn is ``n_samples_cov * n_samples_can``.
 
         Returns:
             The canonicalized reward function.
@@ -35,7 +37,12 @@ class Distance(abc.ABC):
 
     @abc.abstractmethod
     def _distance(
-        self, x_canonical: types.RewardFunction, y_canonical: types.RewardFunction, /
+        self,
+        x_canonical: types.RewardFunction,
+        y_canonical: types.RewardFunction,
+        /,
+        n_samples_cov: int,
+        n_samples_can: int,
     ) -> float:
         """Subclass to implement the distance computation between two canonicalized
         reward functions.
@@ -49,19 +56,26 @@ class Distance(abc.ABC):
         """
 
     def distance(
-        self, x: types.RewardFunction, y: types.RewardFunction, /, nested=True
+        self,
+        x: types.RewardFunction,
+        y: types.RewardFunction,
+        /,
+        n_samples_cov: int,
+        n_samples_can: int,
     ) -> float:
         """Compute the distance between two reward functions.
 
         Args:
             x: The first reward function.
             y: The second reward function.
-            nested: Whether sampling is nested over any expectation operators when
-                computing the canonicalization. See ``canonicalize`` for more details.
+            n_samples_cov: The number of samples to draw from the coverage distribution.
+            n_samples_can: The number of samples to draw for the canonicalization step
+                for each sample of the coverage distribution. The total number of
+                samples drawn is ``n_samples_cov * n_samples_can``.
 
         Returns:
             The distance between the two reward functions.
         """
-        x_canonical = self.canonicalize(x, nested=nested)
-        y_canonical = self.canonicalize(y, nested=nested)
-        return self._distance(x_canonical, y_canonical)
+        x_canonical = self.canonicalize(x, n_samples_cov, n_samples_can)
+        y_canonical = self.canonicalize(y, n_samples_cov, n_samples_can)
+        return self._distance(x_canonical, y_canonical, n_samples_cov, n_samples_can)

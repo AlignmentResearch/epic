@@ -6,7 +6,11 @@ from epic.distances import base
 
 class EPIC(base.Distance):
     def canonicalize(
-        self, x: types.RewardFunction, /, nested=True
+        self,
+        reward_function: types.RewardFunction,
+        /,
+        n_samples_cov: int,
+        n_samples_can: int,
     ) -> types.RewardFunction:
         """Canonicalize a reward function.
 
@@ -14,63 +18,91 @@ class EPIC(base.Distance):
         https://arxiv.org/pdf/2006.13900.pdf.
 
         Args:
-            x: The reward function to canonicalize.
-            nested: Whether sampling is nested over any expectation operators, i.e.
-                take the cartesian product of the state,action,next state samples
-                provided when the reward function is called with the samples used
-                to compute the expectation. If not using nested sampling, the
-                batch size when calling the canonicalized reward function must be the
-                same as the batch size of the samples used to compute the expectation.
-
-
+            reward_function: The reward function to canonicalize.
+            n_samples_cov: The number of samples to draw from the coverage distribution.
+            n_samples_can: The number of samples to draw for the canonicalization step
+                for each sample of the coverage distribution. The total number of
+                samples drawn is ``n_samples_cov * n_samples_can``.
         """
+        rew_fn = utils.multidim_rew_fn(reward_function)
 
         def canonical_reward_fn(state, action, next_state, done, /):
-            _, state_sample = self.state_sampler.sample()
-            action_sample = self.action_sampler.sample()
-            done_sample, next_state_sample = self.state_sampler.sample()
-            assert (
-                state_sample.shape[0]
-                == action_sample.shape[0]
-                == next_state_sample.shape[0]
-            )
-            assert state.shape[0] == action.shape[0] == next_state.shape[0]
-            if not nested:
-                assert state.shape[0] == state_sample.shape[0]
+            """Canonical reward function.
+            ``state``, ``action``, ``next_state`` correspond to s, a, s' in the paper
+            and ``state_sample``, ``action_sample``, ``next_state_sample``
+            correspond to S, A, S' in the paper.
 
-            # ``state``, ``action``, ``next_state`` correspond to s, a, s' in the paper
-            # and ``state_sample``, ``action_sample``, ``next_state_sample``
-            # correspond to S, A, S' in the paper.
-            x_kw = utils.keywordize_rew_fn(x)  # call x using keyword arguments
-            # automatically take the cartesian product of independent batches.
-            x_cart = utils.product_batch_wrapper(x_kw, nested=nested)
+            Args:
+                state: The batch of state samples from the coverage distribution.
+                action: The batch of action samples from the coverage distribution.
+                next_state: The batch of next state samples from the coverage distribution.
+                done: The batch of done samples from the coverage distribution.
+
+            Returns:
+                The canonicalized reward function.
+            """
+
+            assert (
+                state.shape[0]
+                == action.shape[0]
+                == next_state.shape[0]
+                == done.shape[0]
+                == n_samples_cov
+            )
+            n_samples = n_samples_cov * n_samples_can
+
+            # Copy each sample in n_samples_cov to n_samples_can times.
+            state, action, next_state, done = utils.broadcast(
+                state, action, next_state, done, n_samples_can
+            )
+
+            # Create n_samples_cov * n_samples_can samples.
+            _, state_sample = self.state_sampler.sample(n_samples)
+            action_sample = self.action_sampler.sample(n_samples)
+            done_sample, next_state_sample = self.state_sampler.sample(n_samples)
+
+            # Reshape to (n_samples_cov, n_samples_can, -1).
+            # This is easier than reshaping the output of each flat reward function call
+            # to take the mean along the inner monte carlo estimator.
+            state_sample, action_sample, next_state_sample, done_sample = utils.reshape(
+                state_sample,
+                action_sample,
+                next_state_sample,
+                done_sample,
+                n_samples_cov,
+            )
 
             # E[R(s', A, S')]. We sample action and next state,
             # and pass in ``next_state`` as the state.
             # We make this the first dimension to then take the mean.
             term_1 = np.mean(
-                x_cart(
-                    {"action": action_sample, "next_state": next_state_sample, "done": done_sample},
-                    {"state": next_state},
+                rew_fn(
+                    action_sample,
+                    next_state,
+                    next_state_sample,
+                    done_sample,
+                    batch_dims=2,
                 ),
                 axis=0,
             )
             # E[R(s, A, S')]. We also sample action and next state.
             # Now it's simply ``state`` that we pass in as the state.
             term_2 = np.mean(
-                x_cart(
-                    {"action": action_sample, "next_state": next_state_sample, "done": done_sample},
-                    {"state": state},
+                rew_fn(
+                    action_sample, state, next_state_sample, done_sample, batch_dims=2
                 ),
                 axis=0,
             )
             # E[R(S, A, S')]. We sample state, action, and next state.
             # This does not require cartesian product over batches
             # as it's not a random variable.
-            term_3 = np.mean(x(state_sample, action_sample, next_state_sample, done_sample), axis=0)
+            term_3 = np.mean(
+                rew_fn(action_sample, state_sample, next_state_sample, done_sample),
+                axis=0,
+            )
 
             return (
-                x(state, action, next_state, done)
+                reward_function(state, action, next_state, done)
                 + self.discount_factor * term_1
                 - term_2
                 - self.discount_factor * term_3
@@ -79,19 +111,38 @@ class EPIC(base.Distance):
         return canonical_reward_fn
 
     def _distance(
-        self, x_canonical: types.RewardFunction, y_canonical: types.RewardFunction, /
+        self,
+        x_canonical: types.RewardFunction,
+        y_canonical: types.RewardFunction,
+        /,
+        n_samples_cov: int,
+        n_samples_can: int,
     ) -> float:
-        _, state_sample = self.state_sampler.sample()
-        action_sample = self.action_sampler.sample()
-        done_sample, next_state_sample = self.state_sampler.sample()
+        _, state_sample = self.state_sampler.sample(n_samples_cov)
+        action_sample = self.action_sampler.sample(n_samples_cov)
+        done_sample, next_state_sample = self.state_sampler.sample(n_samples_cov)
 
-        x_samples = x_canonical(state_sample, action_sample, next_state_sample, done_sample)
-        y_samples = y_canonical(state_sample, action_sample, next_state_sample, done_sample)
+        x_samples = x_canonical(
+            state_sample, action_sample, next_state_sample, done_sample
+        )
+        y_samples = y_canonical(
+            state_sample, action_sample, next_state_sample, done_sample
+        )
 
         return np.sqrt(1 - np.corrcoef(x_samples, y_samples)[0, 1])
 
 
-def epic_distance(x, y, /, *, state_sampler, action_sampler, discount_factor, nested):
+def epic_distance(
+    x,
+    y,
+    /,
+    *,
+    state_sampler,
+    action_sampler,
+    discount_factor,
+    n_samples_cov: int,
+    n_samples_can: int,
+):
     """Compute the EPIC distance between two reward functions.
 
     Helper for automatically instantiating the EPIC Distance class and computing
@@ -117,4 +168,4 @@ def epic_distance(x, y, /, *, state_sampler, action_sampler, discount_factor, ne
         state_sampler=state_sampler,
         action_sampler=action_sampler,
         discount_factor=discount_factor,
-    ).distance(x, y, nested=nested)
+    ).distance(x, y, n_samples_cov, n_samples_can)

@@ -1,4 +1,4 @@
-from typing import Callable, Optional, TypeVar, Generic, Tuple
+from typing import Optional, TypeVar, Generic, Tuple
 import abc
 
 import gym
@@ -12,7 +12,7 @@ T_co = TypeVar("T_co", covariant=True)
 
 class BaseSampler(Generic[T_co], abc.ABC):
     @abc.abstractmethod
-    def sample(self) -> T_co:
+    def sample(self, n_samples: int) -> T_co:
         """Samples from the sampler.
 
         Returns: A numpy array of samples.
@@ -21,29 +21,32 @@ class BaseSampler(Generic[T_co], abc.ABC):
 
 
 class BaseGymSampler:
-    def __init__(self, space: gym.Space, n_samples: int):
+    def __init__(self, space: gym.Space):
         self.space = space
-        self.n_samples = n_samples
 
 
 class GymSpaceSampler(BaseSampler[npt.NDArray], BaseGymSampler):
-    def sample(self) -> npt.NDArray:
-        return np.array([self.space.sample() for _ in range(self.n_samples)])
+    def sample(self, n_samples: int) -> npt.NDArray:
+        return np.array([self.space.sample() for _ in range(n_samples)])
 
 
-class DummyGymStateSampler(BaseSampler[Tuple[npt.NDArray[bool], npt.NDArray]], BaseGymSampler):
-    def sample(self):
-        state_sample = np.array([self.space.sample() for _ in range(self.n_samples)])
-        done_sample = np.zeros(self.n_samples, dtype=np.bool_)
+class DummyGymStateSampler(
+    BaseSampler[Tuple[npt.NDArray[np.bool_], npt.NDArray]], BaseGymSampler
+):
+    def sample(self, n_samples: int) -> Tuple[npt.NDArray[np.bool_], npt.NDArray]:
+        state_sample = np.array([self.space.sample() for _ in range(n_samples)])
+        done_sample = np.zeros(n_samples, dtype=np.bool_)
         return done_sample, state_sample
 
 
 class PreloadedDataSampler(BaseSampler[np.ndarray]):
     """A sampler that samples from a preloaded dataset."""
+
     data: np.ndarray
     n_samples: Optional[int]
     rng: np.random.Generator
-    def __init__(self, data: np.ndarray, n_samples: Optional[int] = None, rng: Optional[np.random.Generator] = None):
+
+    def __init__(self, data: np.ndarray, rng: Optional[np.random.Generator] = None):
         """Initializes the sampler.
 
         Args:
@@ -55,32 +58,18 @@ class PreloadedDataSampler(BaseSampler[np.ndarray]):
 
         Raises:
             ValueError: If the n_samples is larger than the first dimension of the data.
-            """
+        """
         self.data = data
-        self.n_samples = n_samples
         self.rng = rng or np.random.default_rng()
 
-        if self.n_samples is not None and self.data.shape[0] < self.n_samples:
-            raise ValueError(f"n_samples ({self.n_samples}) must be less than the number of data points ({self.data.shape[0]})")
-
-    def sample(self):
-        return self.data[self.rng.integers(0, self.data.shape[0], self.n_samples)] \
-                if self.n_samples is not None \
-                else self.data
-
-
-def make_sampler(fn: Callable[[], np.ndarray]) -> BaseSampler[np.ndarray]:
-    """Decorator to create a sampler from a function.
-
-    The function should take no arguments and return a numpy array.
-
-    Args:
-        fn: The function to use to create the sampler.
-
-    Returns: A sampler instance.
-    """
-    class FunctionSampler(BaseSampler[np.ndarray]):
-        def sample(self) -> np.ndarray:
-            return fn()
-
-    return FunctionSampler()
+    def sample(self, n_samples):
+        if self.data.shape[0] < self.n_samples:
+            raise ValueError(
+                f"n_samples ({self.n_samples}) must be less than "
+                f"the number of data points ({self.data.shape[0]})"
+            )
+        return (
+            self.data[self.rng.integers(0, self.data.shape[0], self.n_samples)]
+            if self.n_samples is not None
+            else self.data
+        )

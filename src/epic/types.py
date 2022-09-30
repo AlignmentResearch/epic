@@ -60,7 +60,7 @@ T_co = TypeVar("T_co", covariant=True)
 
 
 class Sampler(Protocol[T_co]):
-    def sample(self) -> T_co:
+    def sample(self, n_samples: int) -> T_co:
         pass
 
 

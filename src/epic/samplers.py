@@ -43,7 +43,7 @@ class PreloadedDataSampler(BaseSampler[npt.NDArray]):
     data: np.ndarray
     n_samples: Optional[int]
     rng: np.random.Generator
-    def __init__(self, data: np.ndarray, n_samples: Optional[int] = None, rng: Optional[np.random.Generator] = None):
+    def __init__(self, data: npt.NDArray, n_samples: Optional[int] = None, rng: Optional[np.random.Generator] = None):
         """Initializes the sampler.
 
         Args:

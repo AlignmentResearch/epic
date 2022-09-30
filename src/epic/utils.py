@@ -7,6 +7,7 @@ from epic import types
 
 
 def keywordize_rew_fn(reward_fn: types.RewardFunction):
+    """Converts a reward function that takes positional arguments to one that takes keyword arguments"""
     def wrapper(
         *,
         state: np.ndarray,
@@ -55,72 +56,6 @@ def multidim_rew_fn(function: types.RewardFunction):
             dict(state=state, action=action, next_state=next_state, done=done),
             num_batch_dims=batch_dims,
         )
-
-    return wrapper
-
-
-def product_batch_call(
-    function: Fn, *grouped_arguments: Dict[str, np.ndarray]
-) -> np.ndarray:
-    arg_names = [
-        arg_name
-        for arg_group in grouped_arguments
-        for arg_name in list(arg_group.keys())
-    ]
-    if len(arg_names) != len(set(arg_names)):
-        raise ValueError("Argument names must be unique within and across groups")
-
-    batch_lengths = []
-    for arg_group in grouped_arguments:
-        shapes = [arg_val.shape[0] for arg_val in arg_group.values()]
-        if len(set(shapes)) != 1:
-            raise ValueError(
-                "All arrays in the same axis must have the same number of batch items"
-            )
-        batch_lengths.append(shapes[0])
-
-    class Info(TypedDict):
-        axis: int
-        array: np.ndarray
-
-    map_arg_to_info: Dict[str, Info] = dict()
-    for index, arg_group in enumerate(grouped_arguments):
-        for arg_name, arg_val in arg_group.items():
-            map_arg_to_info[arg_name] = {"axis": index, "array": arg_val}
-
-    arguments: Dict[str, np.ndarray] = dict()
-    for arg_name, arg_info in map_arg_to_info.items():
-        # for each axis i that is not data['axis'], we want to copy data['array']
-        # along the axis i for batch_lengths[i] times
-        axis = arg_info["axis"]
-        array = arg_info["array"]
-        batch_lengths_sliced = [
-            length for idx, length in enumerate(batch_lengths) if idx != axis
-        ]
-        tiled_array = np.broadcast_to(array, (*batch_lengths_sliced, *array.shape))
-        # now we want to swap the axes, since we want the first dimension of `array`
-        # (the original batch axis) to be along the axis `axis`. The other axes should
-        # be in the correct order since we first excluded it on `batch_lengths_sliced`.
-        tiled_array = np.swapaxes(tiled_array, -len(array.shape), axis)
-        # this is how the shape of the array should be:
-        assert tiled_array.shape == tuple((*batch_lengths, *array.shape[1:]))
-        arguments[arg_name] = tiled_array
-
-    return multidim_batch_call(
-        function, arguments=arguments, num_batch_dims=len(batch_lengths)
-    )
-
-
-def product_batch_wrapper(function: Fn, nested=True):
-    def wrapper(*args: Dict[str, np.ndarray]):
-        if nested:
-            return product_batch_call(function, *args)
-        else:
-            # merge all arguments into a single dictionary
-            merged_args = {}
-            for arg_group in args:
-                merged_args.update(arg_group)
-            return function(**merged_args)
 
     return wrapper
 

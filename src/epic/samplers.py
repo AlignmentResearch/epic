@@ -38,7 +38,7 @@ class DummyGymStateSampler(BaseSampler[Tuple[npt.NDArray[bool], npt.NDArray]], B
         return done_sample, state_sample
 
 
-class PreloadedDataSampler(BaseSampler[np.ndarray]):
+class PreloadedDataSampler(BaseSampler[npt.NDArray]):
     """A sampler that samples from a preloaded dataset."""
     data: np.ndarray
     n_samples: Optional[int]

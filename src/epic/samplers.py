@@ -80,7 +80,7 @@ def make_sampler(fn: Callable[[], npt.NDArray]) -> BaseSampler[np.ndarray]:
     Returns: A sampler instance.
     """
     class FunctionSampler(BaseSampler[npt.NDArray]):
-        def sample(self) -> np.ndarray:
+        def sample(self) -> npt.NDArray:
             return fn()
 
     return FunctionSampler()

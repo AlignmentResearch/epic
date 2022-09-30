@@ -69,7 +69,7 @@ class PreloadedDataSampler(BaseSampler[npt.NDArray]):
                 else self.data
 
 
-def make_sampler(fn: Callable[[], np.ndarray]) -> BaseSampler[np.ndarray]:
+def make_sampler(fn: Callable[[], npt.NDArray]) -> BaseSampler[np.ndarray]:
     """Decorator to create a sampler from a function.
 
     The function should take no arguments and return a numpy array.

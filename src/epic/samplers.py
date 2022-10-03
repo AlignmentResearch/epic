@@ -1,11 +1,9 @@
 import abc
-from typing import Generic, Optional, Sequence, Sized, Tuple, TypeVar
+from typing import Generic, Optional, Sequence, Tuple, TypeVar
 
 import gym
 import numpy as np
 import numpy.typing as npt
-
-from epic import types
 
 T_co = TypeVar("T_co", covariant=True)
 

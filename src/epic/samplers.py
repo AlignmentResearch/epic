@@ -2,6 +2,7 @@
 
 
 import abc
+import random
 from typing import Generic, Optional, Sequence, Tuple, TypeVar
 
 import gym
@@ -33,16 +34,16 @@ class BaseDatasetSampler(BaseSampler[T_co], abc.ABC):
         """
 
 
-T_sized_co = TypeVar("T_sized_co", covariant=True, bound=Sequence)
+T_sized = TypeVar("T_sized", bound=Sequence)
 
 
-class DatasetSampler(BaseDatasetSampler[T_sized_co]):
+class DatasetSampler(BaseDatasetSampler[T_co], Generic[T_co, T_sized]):
     """A sampler that samples from a preloaded dataset."""
 
-    data: T_sized_co
+    data: T_sized
     rng: np.random.Generator
 
-    def __init__(self, data: T_sized_co, rng: Optional[np.random.Generator] = None):
+    def __init__(self, data: T_sized, rng: Optional[np.random.Generator] = None):
         """Initializes the sampler.
 
         Args:
@@ -58,12 +59,9 @@ class DatasetSampler(BaseDatasetSampler[T_sized_co]):
         self.data = data
         self.rng = rng or np.random.default_rng()
 
+    @abc.abstractmethod
     def sample(self, n_samples: Optional[int] = None):
-        if n_samples and len(self.data) < n_samples:
-            raise ValueError(
-                f"n_samples ({n_samples}) must be less than " f"the number of data points ({len(self.data)})"
-            )
-        return self.data[self.rng.integers(0, len(self.data), n_samples)] if n_samples is not None else self.data
+        pass
 
 
 class GymSamplerMixin:

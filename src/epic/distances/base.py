@@ -1,3 +1,6 @@
+"""Base class for distance metrics."""
+
+
 import abc
 from typing import Optional
 
@@ -7,6 +10,22 @@ from epic import samplers, types
 
 
 class Distance(abc.ABC):
+    """Compute the distance between two reward functions.
+
+    Abstract base class to implement specific distance (pseudo-)metrics
+    between reward functions. It consists of two steps:
+
+    1. Canonicalization: Transform the reward function into a canonical form. This is so
+        that equivalent reward functions are mapped to a single canonical form, for some
+        notion of equivalence.
+    2. Distance: Compute the distance between two reward functions in their
+        canonical form.
+
+    Users must implement the ``_distance`` method, which takes two reward functions
+    in their canonical form and computes the distance between them, and the
+    ``canonicalize`` method, which takes a reward function and returns its canonical
+    form.
+    """
 
     state_sampler: samplers.BaseSampler[samplers.StateSample]
     action_sampler: samplers.BaseSampler[npt.NDArray]

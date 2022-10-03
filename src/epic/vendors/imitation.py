@@ -1,3 +1,5 @@
+"""Hooks for interoperability with imitation."""
+
 from imitation.rewards import reward_nets
 
 from epic import types

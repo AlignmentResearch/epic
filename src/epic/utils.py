@@ -45,6 +45,24 @@ def multidim_batch_call(function: Fn, arguments: Dict[str, np.ndarray], num_batc
 
 
 def multidim_rew_fn(function: types.RewardFunction):
+    """Allows calling a reward function with multidimensional batches.
+
+     This is done by adding an optional keyword argument `batch_dims` specifying the
+     number of dimensions of the batch to be processed. If `batch_dims` is not specified,
+    the function is called with a single batch dimension.
+
+    The function is then called with the flattened arguments, and the result is reshaped
+    to have the original batch dimensions.
+
+    This is useful for reward functions that only process calls with a single batch dimension,
+    but are called with multiple batch dimensions (e.g. for taking averages).
+
+    Args:
+        function: The reward function to be called.
+
+    Returns:
+        A reward function that can be called with multiple batch dimensions.
+    """
     function = keywordize_rew_fn(function)
 
     def wrapper(state, action, next_state, done, batch_dims: int = 1):

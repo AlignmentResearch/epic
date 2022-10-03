@@ -1,3 +1,6 @@
+"""Base sampling interface and implementations for canonicalization and coverage sampling."""
+
+
 import abc
 from typing import Generic, Optional, Sequence, Tuple, TypeVar
 

@@ -1,3 +1,5 @@
+"""Implements the EPIC distance (https://arxiv.org/abs/2006.13900)."""
+
 from typing import Optional, TypeVar
 
 import numpy as np

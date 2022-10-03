@@ -1,17 +1,27 @@
 import abc
+from typing import Optional
 
-from epic import types
+import numpy.typing as npt
+
+from epic import samplers, types
 
 
 class Distance(abc.ABC):
+
+    state_sampler: samplers.BaseSampler[samplers.StateSample]
+    action_sampler: samplers.BaseSampler[npt.NDArray]
+    coverage_sampler: samplers.BaseSampler[samplers.CoverageSample]
+
     def __init__(
         self,
-        state_sampler: types.StateSampler,
-        action_sampler: types.ActionSampler,
+        state_sampler: samplers.BaseSampler[samplers.StateSample],
+        action_sampler: samplers.BaseSampler[npt.NDArray],
+        coverage_sampler: samplers.BaseSampler[samplers.CoverageSample],
         discount_factor: float,
     ):
         self.state_sampler = state_sampler
         self.action_sampler = action_sampler
+        self.coverage_sampler = coverage_sampler
         self.discount_factor = discount_factor
 
     @abc.abstractmethod
@@ -19,8 +29,7 @@ class Distance(abc.ABC):
         self,
         reward_function: types.RewardFunction,
         /,
-        n_samples_cov: int,
-        n_samples_can: int,
+        n_samples_can: Optional[int],
     ) -> types.RewardFunction:
         """Canonicalize a reward function.
 
@@ -41,8 +50,8 @@ class Distance(abc.ABC):
         x_canonical: types.RewardFunction,
         y_canonical: types.RewardFunction,
         /,
-        n_samples_cov: int,
-        n_samples_can: int,
+        n_samples_cov: Optional[int],
+        n_samples_can: Optional[int],
     ) -> float:
         """Subclass to implement the distance computation between two canonicalized
         reward functions.
@@ -60,8 +69,8 @@ class Distance(abc.ABC):
         x: types.RewardFunction,
         y: types.RewardFunction,
         /,
-        n_samples_cov: int,
-        n_samples_can: int,
+        n_samples_cov: Optional[int] = None,
+        n_samples_can: Optional[int] = None,
     ) -> float:
         """Compute the distance between two reward functions.
 
@@ -76,6 +85,6 @@ class Distance(abc.ABC):
         Returns:
             The distance between the two reward functions.
         """
-        x_canonical = self.canonicalize(x, n_samples_cov, n_samples_can)
-        y_canonical = self.canonicalize(y, n_samples_cov, n_samples_can)
+        x_canonical = self.canonicalize(x, n_samples_can)
+        y_canonical = self.canonicalize(y, n_samples_can)
         return self._distance(x_canonical, y_canonical, n_samples_cov, n_samples_can)

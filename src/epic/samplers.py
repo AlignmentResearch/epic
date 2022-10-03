@@ -1,5 +1,5 @@
-from typing import Optional, TypeVar, Generic, Tuple
 import abc
+from typing import Generic, Optional, Sequence, Sized, Tuple, TypeVar
 
 import gym
 import numpy as np
@@ -12,41 +12,36 @@ T_co = TypeVar("T_co", covariant=True)
 
 class BaseSampler(Generic[T_co], abc.ABC):
     @abc.abstractmethod
-    def sample(self, n_samples: int) -> T_co:
+    def sample(self, n_samples: int, /) -> T_co:
         """Samples from the sampler.
 
         Returns: A numpy array of samples.
         """
-        raise NotImplementedError
 
 
-class BaseGymSampler:
-    def __init__(self, space: gym.Space):
-        self.space = space
+class BaseDatasetSampler(BaseSampler[T_co], abc.ABC):
+    @abc.abstractmethod
+    def sample(self, n_samples: Optional[int] = None, /) -> T_co:
+        """Sample from the dataset.
+
+        Args:
+            n_samples: The number of samples to draw. If ``None``, draw all samples.
+
+        Returns:
+            The sampled data.
+        """
 
 
-class GymSpaceSampler(BaseSampler[npt.NDArray], BaseGymSampler):
-    def sample(self, n_samples: int) -> npt.NDArray:
-        return np.array([self.space.sample() for _ in range(n_samples)])
+T_sized_co = TypeVar("T_sized_co", covariant=True, bound=Sequence)
 
 
-class DummyGymStateSampler(
-    BaseSampler[Tuple[npt.NDArray[np.bool_], npt.NDArray]], BaseGymSampler
-):
-    def sample(self, n_samples: int) -> Tuple[npt.NDArray[np.bool_], npt.NDArray]:
-        state_sample = np.array([self.space.sample() for _ in range(n_samples)])
-        done_sample = np.zeros(n_samples, dtype=np.bool_)
-        return done_sample, state_sample
-
-
-class PreloadedDataSampler(BaseSampler[np.ndarray]):
+class DatasetSampler(BaseDatasetSampler[T_sized_co]):
     """A sampler that samples from a preloaded dataset."""
 
-    data: np.ndarray
-    n_samples: Optional[int]
+    data: T_sized_co
     rng: np.random.Generator
 
-    def __init__(self, data: np.ndarray, rng: Optional[np.random.Generator] = None):
+    def __init__(self, data: T_sized_co, rng: Optional[np.random.Generator] = None):
         """Initializes the sampler.
 
         Args:
@@ -62,14 +57,52 @@ class PreloadedDataSampler(BaseSampler[np.ndarray]):
         self.data = data
         self.rng = rng or np.random.default_rng()
 
-    def sample(self, n_samples):
-        if self.data.shape[0] < self.n_samples:
+    def sample(self, n_samples: Optional[int] = None):
+        if n_samples and len(self.data) < n_samples:
             raise ValueError(
-                f"n_samples ({self.n_samples}) must be less than "
-                f"the number of data points ({self.data.shape[0]})"
+                f"n_samples ({n_samples}) must be less than " f"the number of data points ({len(self.data)})"
             )
-        return (
-            self.data[self.rng.integers(0, self.data.shape[0], self.n_samples)]
-            if self.n_samples is not None
-            else self.data
-        )
+        return self.data[self.rng.integers(0, len(self.data), n_samples)] if n_samples is not None else self.data
+
+
+class GymSamplerMixin:
+    """Mixin class for samplers that sample from a gym space."""
+
+    def __init__(self, space: gym.Space):
+        self.space = space
+
+
+class GymSpaceSampler(BaseSampler[npt.NDArray], GymSamplerMixin):
+    """Samples from a gym space by using the gym space's sample method."""
+
+    def sample(self, n_samples: int) -> npt.NDArray:
+        return np.array([self.space.sample() for _ in range(n_samples)])
+
+
+StateSample = Tuple[npt.NDArray[np.bool_], npt.NDArray]
+
+
+class DummyGymStateSampler(BaseSampler[StateSample], GymSamplerMixin):
+    """Samples from a gym space and returns a dummy done array."""
+
+    def sample(self, n_samples: int) -> Tuple[npt.NDArray[np.bool_], npt.NDArray]:
+        state_sample = np.array([self.space.sample() for _ in range(n_samples)])
+        done_sample = np.zeros(n_samples, dtype=np.bool_)
+        return done_sample, state_sample
+
+
+CoverageSample = Tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray[np.bool_]]
+
+
+class ProductDistrCoverageSampler(BaseSampler[CoverageSample]):
+    """Samples from a product distribution and returns the coverage."""
+
+    def __init__(self, action_sampler: BaseSampler[npt.NDArray], state_sampler: BaseSampler[StateSample]):
+        self.action_sampler = action_sampler
+        self.state_sampler = state_sampler
+
+    def sample(self, n_samples: int) -> CoverageSample:
+        actions = self.action_sampler.sample(n_samples)
+        _, states = self.state_sampler.sample(n_samples)
+        dones, next_states = self.state_sampler.sample(n_samples)
+        return actions, states, next_states, dones

@@ -10,15 +10,9 @@ def test_multidim_rew_fn():
 
     multidim_rew_fn = utils.multidim_rew_fn(rew_fn)
 
+    assert multidim_rew_fn(np.array([1]), np.array([2]), np.array([3]), np.array([4])) == 10
     assert (
-        multidim_rew_fn(np.array([1]), np.array([2]), np.array([3]), np.array([4]))
-        == 10
-    )
-    assert (
-        multidim_rew_fn(
-            np.array([1, 2]), np.array([2, 3]), np.array([3, 4]), np.array([4, 5])
-        )
-        == np.array([10, 14])
+        multidim_rew_fn(np.array([1, 2]), np.array([2, 3]), np.array([3, 4]), np.array([4, 5])) == np.array([10, 14])
     ).all()
 
 
@@ -48,6 +42,7 @@ def get_random_arr(dims: int):
         return np.random.rand(np.random.randint(1, 10), np.random.randint(1, 10), np.random.randint(1, 10))
     else:
         raise ValueError("dims must be 1, 2, or 3")
+
 
 @pytest.mark.parametrize("n_dims", [1, 2, 3])
 @pytest.mark.parametrize("n_samples_can", [2, 3])

@@ -8,6 +8,7 @@ from epic import types
 
 def keywordize_rew_fn(reward_fn: types.RewardFunction):
     """Converts a reward function that takes positional arguments to one that takes keyword arguments"""
+
     def wrapper(
         *,
         state: np.ndarray,
@@ -28,9 +29,7 @@ class Fn(Protocol[P]):
         ...
 
 
-def multidim_batch_call(
-    function: Fn, arguments: Dict[str, np.ndarray], num_batch_dims: int
-):
+def multidim_batch_call(function: Fn, arguments: Dict[str, np.ndarray], num_batch_dims: int):
     """Allows converting a function that only processes calls with a single batch dimension
     into a function that processes calls with multiple batch dimensions.
 
@@ -42,9 +41,7 @@ def multidim_batch_call(
     for key, value in arguments.items():
         flattened_arguments[key] = value.reshape(-1, *value.shape[num_batch_dims:])
     result = function(**flattened_arguments)
-    return result.reshape(
-        *next(iter(arguments.values())).shape[:num_batch_dims], *result.shape[1:]
-    )
+    return result.reshape(*next(iter(arguments.values())).shape[:num_batch_dims], *result.shape[1:])
 
 
 def multidim_rew_fn(function: types.RewardFunction):
@@ -65,9 +62,7 @@ def broadcast(state, action, next_state, done, /, n_samples_can):
     return (
         np.swapaxes(np.broadcast_to(state, (n_samples_can, *state.shape)), 1, 0),
         np.swapaxes(np.broadcast_to(action, (n_samples_can, *action.shape)), 1, 0),
-        np.swapaxes(
-            np.broadcast_to(next_state, (n_samples_can, *next_state.shape)), 1, 0
-        ),
+        np.swapaxes(np.broadcast_to(next_state, (n_samples_can, *next_state.shape)), 1, 0),
         np.swapaxes(np.broadcast_to(done, (n_samples_can, *done.shape)), 1, 0),
     )
 

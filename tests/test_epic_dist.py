@@ -1,8 +1,9 @@
+import gym
 import numpy as np
 import pytest
+
 from epic.distances import epic
-from epic.samplers import GymSpaceSampler, DummyGymStateSampler
-import gym
+from epic.samplers import DummyGymStateSampler, GymSpaceSampler
 
 
 def rew_fn_1(state, action, next_state, _):

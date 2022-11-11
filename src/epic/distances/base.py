@@ -27,16 +27,16 @@ class Distance(abc.ABC):
     form.
     """
 
-    state_sampler: samplers.BaseSampler[samplers.StateSample]
-    action_sampler: samplers.BaseSampler[npt.NDArray]
     coverage_sampler: samplers.BaseSampler[samplers.CoverageSample]
+    state_sampler: Optional[samplers.BaseSampler[samplers.StateSample]]
+    action_sampler: Optional[samplers.BaseSampler[npt.NDArray]]
 
     def __init__(
         self,
-        state_sampler: samplers.BaseSampler[samplers.StateSample],
-        action_sampler: samplers.BaseSampler[npt.NDArray],
-        coverage_sampler: samplers.BaseSampler[samplers.CoverageSample],
         discount_factor: float,
+        state_sampler: Optional[samplers.BaseSampler[samplers.StateSample]],
+        action_sampler: Optional[samplers.BaseSampler[npt.NDArray]],
+        coverage_sampler: Optional[samplers.BaseSampler[samplers.CoverageSample]],
     ):
         self.state_sampler = state_sampler
         self.action_sampler = action_sampler
@@ -48,6 +48,7 @@ class Distance(abc.ABC):
         self,
         reward_function: types.RewardFunction,
         /,
+        n_samples_cov: Optional[int],
         n_samples_can: Optional[int],
     ) -> types.RewardFunction:
         """Canonicalize a reward function.

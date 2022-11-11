@@ -6,20 +6,20 @@ import numpy as np
 import numpy.typing as npt
 
 from epic import samplers, types, utils
-from epic.distances import base
+from epic.distances import base, pearson_mixin
 
 T_co = TypeVar("T_co", covariant=True)
 
 
-class EPIC(base.Distance):
+class EPIC(base.Distance, pearson_mixin.PearsonMixin):
     default_samples_cov = 500
     default_samples_can = 500
 
     def __init__(
         self,
+        discount_factor: float,
         state_sampler: samplers.BaseSampler[samplers.StateSample],
         action_sampler: samplers.BaseSampler[npt.NDArray],
-        discount_factor: float,
         coverage_sampler: Optional[samplers.BaseSampler[samplers.CoverageSample]] = None,
     ):
         """Initialize the EPIC distance.
@@ -33,7 +33,12 @@ class EPIC(base.Distance):
             discount_factor: The discount factor.
         """
         coverage_sampler = coverage_sampler or samplers.ProductDistrCoverageSampler(action_sampler, state_sampler)
-        super().__init__(state_sampler, action_sampler, coverage_sampler, discount_factor)
+        super().__init__(
+            discount_factor,
+            state_sampler,
+            action_sampler,
+            coverage_sampler,
+        )
 
     def canonicalize(
         self,
@@ -114,28 +119,6 @@ class EPIC(base.Distance):
 
         return canonical_reward_fn
 
-    def _distance(
-        self,
-        x_canonical: types.RewardFunction,
-        y_canonical: types.RewardFunction,
-        /,
-        n_samples_cov: Optional[int],
-        n_samples_can: Optional[int],
-    ) -> float:
-        if isinstance(self.coverage_sampler, samplers.BaseDatasetSampler):
-            state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample = self.coverage_sampler.sample(
-                n_samples_cov
-            )
-        else:
-            state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample = self.coverage_sampler.sample(
-                n_samples_cov or self.default_samples_cov
-            )
-
-        x_samples = x_canonical(state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample)
-        y_samples = y_canonical(state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample)
-
-        return np.sqrt(1 - np.corrcoef(x_samples, y_samples)[0, 1])
-
 
 def epic_distance(
     x,
@@ -153,7 +136,7 @@ def epic_distance(
     Helper for automatically instantiating the EPIC Distance class and computing
     the distance between two reward functions.
 
-    Do not ue this helper if you want to compute distances between multiple pairs
+    Do not use this helper if you want to compute distances between multiple pairs
     of reward functions. Instead, instantiate the EPIC class and call the
     ``distance`` method on the instance multiple times.
 

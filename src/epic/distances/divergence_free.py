@@ -48,8 +48,8 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         coverage_sampler = coverage_sampler or samplers.ProductDistrCoverageSampler(action_sampler, state_sampler)
         super().__init__(discount_factor, state_sampler, action_sampler, coverage_sampler)
         state_sample, action_sample, _, _ = self.coverage_sampler.sample(1)
-        self.state_dim = state_sample.shape[-1]
-        self.action_dim = action_sample.shape[-1]
+        self.state_dim = np.prod(state_sample.shape[1:]) if state_sample.ndim > 1 else state_sample.shape[0]
+        self.action_dim = np.prod(action_sample.shape[1:]) if action_sample.ndim > 1 else action_sample.shape[0]
 
     def canonicalize(
         self,
@@ -68,24 +68,27 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         assert isinstance(n_samples_can, int)
 
         net = nn.Sequential(
+            nn.Flatten(),
             nn.Linear(self.state_dim, self.state_dim * 4),
+            nn.ReLU(),
+            nn.Linear(self.state_dim * 4, self.state_dim * 4),
             nn.ReLU(),
             nn.Linear(self.state_dim * 4, 1),
         )
 
-        optimizer = optim.AdamW(net.parameters(), lr=5e-4)
-
-        state_sample, action_sample, next_state_sample, done_sample = self.coverage_sampler.sample(n_samples_can)
-
         n_epochs = 50
         mini_batch_size = n_samples_can // 50
+        optimizer = optim.AdamW(net.parameters(), lr=1e-4)
+        # scheduler = optim.lr_scheduler.ExponentialLR(
+        #     optimizer,
+        #     0.98,
+        # )
 
         for _ in range(n_epochs):
-            for i in range(0, n_samples_can, mini_batch_size):
-                state_sample_mb = state_sample[i : i + mini_batch_size]
-                action_sample_mb = action_sample[i : i + mini_batch_size]
-                next_state_sample_mb = next_state_sample[i : i + mini_batch_size]
-                done_sample_mb = done_sample[i : i + mini_batch_size]
+            for i in range(0, n_samples_can // mini_batch_size):
+                state_sample_mb, action_sample_mb, next_state_sample_mb, done_sample_mb = self.coverage_sampler.sample(
+                    mini_batch_size,
+                )
 
                 state_sample_mb_tensor = torch.from_numpy(state_sample_mb).unsqueeze(-1).float()
                 next_state_sample_mb_tensor = torch.from_numpy(next_state_sample_mb).unsqueeze(-1).float()
@@ -94,16 +97,20 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 l2_loss = torch.mean(
                     (
                         torch.from_numpy(
-                            rew_fn(state_sample_mb, action_sample_mb, next_state_sample_mb, done_sample_mb)
+                            rew_fn(state_sample_mb, action_sample_mb, next_state_sample_mb, done_sample_mb),
                         )
                         .unsqueeze(-1)
                         .float()
                         + potential
-                    ).pow(2)
+                    )
+                    ** 2,
                 )
                 l2_loss.backward()
                 optimizer.step()
                 optimizer.zero_grad()
+            # scheduler.step()
+            print(l2_loss)
+        print("Finished fitting")
 
         def canonical_reward_fn(state, action, next_state, done, /):
             """Divergence-Free canonical reward function.
@@ -123,7 +130,8 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 self.discount_factor * net(torch.from_numpy(next_state).unsqueeze(-1).float()).cpu().detach().numpy()
                 - net(torch.from_numpy(state).unsqueeze(-1).float()).cpu().detach().numpy()
             )
-            return rew_fn(state, action, next_state, done) + potential
+
+            return rew_fn(state, action, next_state, done) + potential.squeeze(-1)
 
         return canonical_reward_fn
 

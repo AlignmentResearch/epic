@@ -6,6 +6,14 @@ from epic.distances import divergence_free
 from epic.samplers import DummyGymStateSampler, GymSpaceSampler
 
 
+def rew_fn_0(state, action, next_state, _):
+    return np.zeros_like(state)
+
+
+def rew_fn_0_potential_shaping(state, action, next_state, _):
+    return 2.0 * next_state - 3.0 * state
+
+
 def rew_fn_1(state, action, next_state, _):
     return state + next_state + action
 
@@ -29,9 +37,12 @@ def test_divergence_free_dist_no_errors():
         state_sampler=DummyGymStateSampler(space=state_space),
         action_sampler=GymSpaceSampler(space=action_space),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=200, n_samples_can=2000)
+    ).distance(x, y, n_samples_cov=500, n_samples_can=500)
+
+    print(dist)
 
     assert isinstance(dist, float)
+    assert not np.isnan(dist)
 
 
 def test_divergence_free_dist_reward_equivalence():
@@ -45,6 +56,8 @@ def test_divergence_free_dist_reward_equivalence():
         state_sampler=DummyGymStateSampler(space=state_space),
         action_sampler=GymSpaceSampler(space=action_space),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=500, n_samples_can=10000)
+    ).distance(x, y, n_samples_cov=5000, n_samples_can=25000)
 
-    assert np.isclose(dist, 0, atol=1e-7)
+    print(dist)
+
+    assert np.isclose(dist, 0, atol=5e-2)

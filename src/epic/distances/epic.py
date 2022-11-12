@@ -11,7 +11,7 @@ from epic.distances import base, pearson_mixin
 T_co = TypeVar("T_co", covariant=True)
 
 
-class EPIC(base.Distance, pearson_mixin.PearsonMixin):
+class EPIC(pearson_mixin.PearsonMixin, base.Distance):
     default_samples_cov = 500
     default_samples_can = 500
 

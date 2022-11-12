@@ -83,6 +83,7 @@ class Distance(abc.ABC):
         Returns:
             The distance between the two reward functions.
         """
+        raise NotImplementedError
 
     def distance(
         self,

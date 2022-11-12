@@ -67,13 +67,13 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         n_samples_can = n_samples_can or self.default_samples_can
         assert isinstance(n_samples_can, int)
 
-        self.net = nn.Sequential(
+        net = nn.Sequential(
             nn.Linear(self.state_dim, self.state_dim * 4),
             nn.ReLU(),
             nn.Linear(self.state_dim * 4, 1),
         )
 
-        optimizer = optim.AdamW(self.net.parameters(), lr=5e-4)
+        optimizer = optim.AdamW(net.parameters(), lr=5e-4)
 
         state_sample, action_sample, next_state_sample, done_sample = self.coverage_sampler.sample(n_samples_can)
 
@@ -90,9 +90,7 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 state_sample_mb_tensor = torch.from_numpy(state_sample_mb).unsqueeze(-1).float()
                 next_state_sample_mb_tensor = torch.from_numpy(next_state_sample_mb).unsqueeze(-1).float()
 
-                potential = self.discount_factor * self.net(next_state_sample_mb_tensor) - self.net(
-                    state_sample_mb_tensor
-                )
+                potential = self.discount_factor * net(next_state_sample_mb_tensor) - net(state_sample_mb_tensor)
                 l2_loss = torch.mean(
                     (
                         torch.from_numpy(
@@ -106,7 +104,6 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 l2_loss.backward()
                 optimizer.step()
                 optimizer.zero_grad()
-            print(l2_loss)
 
         def canonical_reward_fn(state, action, next_state, done, /):
             """Divergence-Free canonical reward function.
@@ -123,9 +120,8 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             n_samples_cov = state.shape[0]
             assert n_samples_cov == action.shape[0] == next_state.shape[0] == done.shape[0]
             potential = (
-                self.discount_factor
-                * self.net(torch.from_numpy(next_state).unsqueeze(-1).float()).cpu().detach().numpy()
-                - self.net(torch.from_numpy(state).unsqueeze(-1).float()).cpu().detach().numpy()
+                self.discount_factor * net(torch.from_numpy(next_state).unsqueeze(-1).float()).cpu().detach().numpy()
+                - net(torch.from_numpy(state).unsqueeze(-1).float()).cpu().detach().numpy()
             )
             return rew_fn(state, action, next_state, done) + potential
 

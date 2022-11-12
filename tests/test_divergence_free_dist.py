@@ -11,7 +11,7 @@ def rew_fn_1(state, action, next_state, _):
 
 
 def rew_fn_2(state, action, next_state, _):
-    return state**2 + next_state**2 + 2 * action
+    return -(state**0.5) - next_state**2 - 6 * np.log(action + 1.0)
 
 
 def rew_fn_1_potential_shaping(state, action, next_state, _):
@@ -31,8 +31,6 @@ def test_divergence_free_dist_no_errors():
         discount_factor=1,
     ).distance(x, y, n_samples_cov=200, n_samples_can=2000)
 
-    print(dist)
-
     assert isinstance(dist, float)
 
 
@@ -47,8 +45,6 @@ def test_divergence_free_dist_reward_equivalence():
         state_sampler=DummyGymStateSampler(space=state_space),
         action_sampler=GymSpaceSampler(space=action_space),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=200, n_samples_can=10000)
-
-    print(dist)
+    ).distance(x, y, n_samples_cov=500, n_samples_can=10000)
 
     assert np.isclose(dist, 0, atol=1e-7)

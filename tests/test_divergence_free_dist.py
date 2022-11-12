@@ -39,8 +39,6 @@ def test_divergence_free_dist_no_errors():
         discount_factor=1,
     ).distance(x, y, n_samples_cov=500, n_samples_can=500)
 
-    print(dist)
-
     assert isinstance(dist, float)
     assert not np.isnan(dist)
 
@@ -56,8 +54,6 @@ def test_divergence_free_dist_reward_equivalence():
         state_sampler=DummyGymStateSampler(space=state_space),
         action_sampler=GymSpaceSampler(space=action_space),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=5000, n_samples_can=25000)
-
-    print(dist)
+    ).distance(x, y, n_samples_cov=500, n_samples_can=5000)
 
     assert np.isclose(dist, 0, atol=5e-2)

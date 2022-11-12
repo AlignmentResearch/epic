@@ -76,13 +76,9 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             nn.Linear(self.state_dim * 4, 1),
         )
 
-        n_epochs = 50
+        n_epochs = 200
         mini_batch_size = n_samples_can // 50
-        optimizer = optim.AdamW(net.parameters(), lr=1e-4)
-        # scheduler = optim.lr_scheduler.ExponentialLR(
-        #     optimizer,
-        #     0.98,
-        # )
+        optimizer = optim.Adam(net.parameters(), lr=1e-4)
 
         for _ in range(n_epochs):
             for i in range(0, n_samples_can // mini_batch_size):
@@ -108,9 +104,6 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 l2_loss.backward()
                 optimizer.step()
                 optimizer.zero_grad()
-            # scheduler.step()
-            print(l2_loss)
-        print("Finished fitting")
 
         def canonical_reward_fn(state, action, next_state, done, /):
             """Divergence-Free canonical reward function.

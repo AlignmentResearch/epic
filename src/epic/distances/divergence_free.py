@@ -80,15 +80,20 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
 
         net.to(device)
 
-        n_epochs = 400
+        n_epochs = 100
         mini_batch_size = n_samples_can // 100
-        optimizer = optim.AdamW(net.parameters(), lr=8e-5)
+        optimizer = optim.AdamW(net.parameters(), lr=5e-5)
+
+        state_sample, action_sample, next_state_sample, done_sample = self.coverage_sampler.sample(
+            n_samples_can,
+        )
 
         for epoch in range(n_epochs):
-            for _ in range(0, n_samples_can // mini_batch_size):
-                state_sample_mb, action_sample_mb, next_state_sample_mb, done_sample_mb = self.coverage_sampler.sample(
-                    mini_batch_size,
-                )
+            for i in range(0, n_samples_can // mini_batch_size):
+                state_sample_mb = state_sample[i * (mini_batch_size) : (i + 1) * (mini_batch_size)]
+                next_state_sample_mb = next_state_sample[i * (mini_batch_size) : (i + 1) * (mini_batch_size)]
+                action_sample_mb = action_sample[i * (mini_batch_size) : (i + 1) * (mini_batch_size)]
+                done_sample_mb = done_sample[i * (mini_batch_size) : (i + 1) * (mini_batch_size)]
 
                 state_sample_mb_tensor = utils.float_tensor_from_numpy(state_sample_mb, device)
                 next_state_sample_mb_tensor = utils.float_tensor_from_numpy(next_state_sample_mb, device)
@@ -113,7 +118,7 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 l2_loss.backward()
                 optimizer.step()
                 optimizer.zero_grad()
-            if epoch % 50 == 0:
+            if epoch % 10 == 0:
                 print(l2_loss)
         print("Finished Fitting")
 

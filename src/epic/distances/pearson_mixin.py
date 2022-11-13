@@ -38,4 +38,10 @@ class PearsonMixin:
         x_samples = x_canonical(state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample)
         y_samples = y_canonical(state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample)
 
-        return np.sqrt(1 - np.corrcoef(x_samples, y_samples)[0, 1])
+        # handle cases with constant reward function
+        if np.var(x_samples) < 1e-5 and np.var(y_samples) < 1e-5:
+            return 0.0
+        elif np.var(x_samples) < 1e-5 or np.var(y_samples) < 1e-5:
+            return 0.5
+        else:
+            return np.sqrt(1 - np.corrcoef(x_samples, y_samples)[0, 1])

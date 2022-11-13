@@ -48,7 +48,6 @@ class Distance(abc.ABC):
         self,
         reward_function: types.RewardFunction,
         /,
-        n_samples_cov: Optional[int],
         n_samples_can: Optional[int],
     ) -> types.RewardFunction:
         """Canonicalize a reward function.

@@ -4,26 +4,27 @@ import pytest
 
 from epic.distances import divergence_free
 from epic.samplers import DummyGymStateSampler, GymSpaceSampler
+from einops import reduce
 
 
 def rew_fn_0(state, action, next_state, _):
-    return np.zeros_like(state)
+    return np.zeros(state.shape[0])
 
 
 def rew_fn_0_potential_shaping(state, action, next_state, _):
-    return 2.0 * next_state - 3.0 * state
+    return reduce((2.0 * next_state - 2.0 * state), "b ... -> b", "sum")
 
 
 def rew_fn_1(state, action, next_state, _):
     return state + next_state + action
 
 
-def rew_fn_2(state, action, next_state, _):
-    return -(state**0.5) - next_state**2 - 6 * np.log(action + 1.0)
-
-
 def rew_fn_1_potential_shaping(state, action, next_state, _):
-    return state + next_state + action + next_state / 4 - state / 7
+    return state + next_state + action + next_state / 3 - state / 3
+
+
+def rew_fn_2(state, action, next_state, _):
+    return state**2 + next_state**2 + 2 * action
 
 
 def test_divergence_free_dist_no_errors():
@@ -43,7 +44,25 @@ def test_divergence_free_dist_no_errors():
     assert not np.isnan(dist)
 
 
-def test_divergence_free_dist_reward_equivalence():
+def test_divergence_free_dist_reward_equivalence_constant_reward():
+    state_space = gym.spaces.Discrete(10)
+    action_space = gym.spaces.Discrete(10)
+
+    x = rew_fn_0
+    y = rew_fn_0_potential_shaping
+
+    dist = divergence_free.DivergenceFree(
+        state_sampler=DummyGymStateSampler(space=state_space),
+        action_sampler=GymSpaceSampler(space=action_space),
+        discount_factor=1,
+    ).distance(x, y, n_samples_cov=500, n_samples_can=10000)
+
+    print(dist)
+
+    assert np.isclose(dist, 0, atol=1e-2)
+
+
+def test_divergence_free_dist_reward_equivalence_linear_reward():
     state_space = gym.spaces.Discrete(10)
     action_space = gym.spaces.Discrete(10)
 
@@ -54,6 +73,8 @@ def test_divergence_free_dist_reward_equivalence():
         state_sampler=DummyGymStateSampler(space=state_space),
         action_sampler=GymSpaceSampler(space=action_space),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=500, n_samples_can=5000)
+    ).distance(x, y, n_samples_cov=500, n_samples_can=10000)
+
+    print(dist)
 
     assert np.isclose(dist, 0, atol=5e-2)

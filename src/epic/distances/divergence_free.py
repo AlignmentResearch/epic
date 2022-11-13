@@ -9,6 +9,7 @@ import numpy.typing as npt
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from einops import rearrange
 
 from epic import samplers, types, utils
 from epic.distances import base, pearson_mixin
@@ -47,9 +48,8 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             ), "If a coverage sampler is given, state and action samplers will not be used."
         coverage_sampler = coverage_sampler or samplers.ProductDistrCoverageSampler(action_sampler, state_sampler)
         super().__init__(discount_factor, state_sampler, action_sampler, coverage_sampler)
-        state_sample, action_sample, _, _ = self.coverage_sampler.sample(1)
+        state_sample, _, _, _ = self.coverage_sampler.sample(1)
         self.state_dim = np.prod(state_sample.shape[1:]) if state_sample.ndim > 1 else state_sample.shape[0]
-        self.action_dim = np.prod(action_sample.shape[1:]) if action_sample.ndim > 1 else action_sample.shape[0]
 
     def canonicalize(
         self,
@@ -67,36 +67,45 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         n_samples_can = n_samples_can or self.default_samples_can
         assert isinstance(n_samples_can, int)
 
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
         net = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(self.state_dim, self.state_dim * 4),
+            nn.Linear(self.state_dim, max(self.state_dim * 4, 128)),
             nn.ReLU(),
-            nn.Linear(self.state_dim * 4, self.state_dim * 4),
+            nn.Linear(max(self.state_dim * 4, 128), max(self.state_dim * 4, 128)),
             nn.ReLU(),
-            nn.Linear(self.state_dim * 4, 1),
+            nn.Linear(max(self.state_dim * 4, 128), 1),
         )
 
-        n_epochs = 200
-        mini_batch_size = n_samples_can // 50
-        optimizer = optim.Adam(net.parameters(), lr=1e-4)
+        net.to(device)
 
-        for _ in range(n_epochs):
-            for i in range(0, n_samples_can // mini_batch_size):
+        n_epochs = 400
+        mini_batch_size = n_samples_can // 100
+        optimizer = optim.AdamW(net.parameters(), lr=8e-5)
+
+        for epoch in range(n_epochs):
+            for _ in range(0, n_samples_can // mini_batch_size):
                 state_sample_mb, action_sample_mb, next_state_sample_mb, done_sample_mb = self.coverage_sampler.sample(
                     mini_batch_size,
                 )
 
-                state_sample_mb_tensor = torch.from_numpy(state_sample_mb).unsqueeze(-1).float()
-                next_state_sample_mb_tensor = torch.from_numpy(next_state_sample_mb).unsqueeze(-1).float()
+                state_sample_mb_tensor = utils.float_tensor_from_numpy(state_sample_mb, device)
+                next_state_sample_mb_tensor = utils.float_tensor_from_numpy(next_state_sample_mb, device)
 
-                potential = self.discount_factor * net(next_state_sample_mb_tensor) - net(state_sample_mb_tensor)
+                if state_sample_mb_tensor.ndim == 1:
+                    assert next_state_sample_mb_tensor.ndim == 1
+                    state_sample_mb_tensor.unsqueeze_(-1)
+                    next_state_sample_mb_tensor.unsqueeze_(-1)
+                potential = (
+                    self.discount_factor * net(next_state_sample_mb_tensor) - net(state_sample_mb_tensor)
+                ).squeeze(-1)
                 l2_loss = torch.mean(
                     (
-                        torch.from_numpy(
+                        utils.float_tensor_from_numpy(
                             rew_fn(state_sample_mb, action_sample_mb, next_state_sample_mb, done_sample_mb),
+                            device,
                         )
-                        .unsqueeze(-1)
-                        .float()
                         + potential
                     )
                     ** 2,
@@ -104,6 +113,9 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 l2_loss.backward()
                 optimizer.step()
                 optimizer.zero_grad()
+            if epoch % 50 == 0:
+                print(l2_loss)
+        print("Finished Fitting")
 
         def canonical_reward_fn(state, action, next_state, done, /):
             """Divergence-Free canonical reward function.
@@ -119,12 +131,18 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             """
             n_samples_cov = state.shape[0]
             assert n_samples_cov == action.shape[0] == next_state.shape[0] == done.shape[0]
-            potential = (
-                self.discount_factor * net(torch.from_numpy(next_state).unsqueeze(-1).float()).cpu().detach().numpy()
-                - net(torch.from_numpy(state).unsqueeze(-1).float()).cpu().detach().numpy()
+            state_tensor = utils.float_tensor_from_numpy(state, "cpu")
+            next_state_tensor = utils.float_tensor_from_numpy(next_state, "cpu")
+            if state_tensor.ndim == 1:
+                assert next_state_tensor.ndim == 1
+                state_tensor.unsqueeze_(-1)
+                next_state_tensor.unsqueeze_(-1)
+
+            potential = utils.numpy_from_tensor(
+                (self.discount_factor * net(next_state_tensor) - net(state_tensor)).squeeze(-1),
             )
 
-            return rew_fn(state, action, next_state, done) + potential.squeeze(-1)
+            return rew_fn(state, action, next_state, done) + potential
 
         return canonical_reward_fn
 
@@ -150,5 +168,8 @@ def divergence_free_distance(
       n_samples_can: The number of samples to use for the canonicalization.
     """
     return DivergenceFree(discount_factor, state_sampler, action_sampler, coverage_sampler).distance(
-        x, y, n_samples_cov, n_samples_can
+        x,
+        y,
+        n_samples_cov,
+        n_samples_can,
     )

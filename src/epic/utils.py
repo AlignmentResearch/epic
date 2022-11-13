@@ -1,6 +1,7 @@
-from typing import Dict, Protocol, TypedDict
+from typing import Dict, Protocol, TypedDict, Optional, Union
 
 import numpy as np
+import torch
 from typing_extensions import ParamSpec
 
 from epic import types
@@ -93,3 +94,17 @@ def reshape(state, action, next_state, done, /, n_samples_cov):
         next_state.reshape(n_samples_cov, -1),
         done.reshape(n_samples_cov, -1),
     )
+
+
+def float_tensor_from_numpy(arr: np.ndarray, device: Optional[Union[str, torch.device]] = None) -> torch.FloatTensor:
+    """Converts an np.ndarray to a FloatTensor and moves it to the appropriate
+    device.
+    """
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    return torch.from_numpy(arr).float().to(device)
+
+
+def numpy_from_tensor(tensor: torch.Tensor):
+    """Converts a Tensor to an np.ndarray."""
+    return tensor.cpu().detach().numpy()

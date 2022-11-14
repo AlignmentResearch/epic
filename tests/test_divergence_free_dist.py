@@ -8,7 +8,7 @@ from einops import reduce
 
 
 def rew_fn_0(state, action, next_state, _):
-    return np.zeros(state.shape[0])
+    return reduce(np.zeros(state.shape[0]), "b ... -> b", "sum")
 
 
 def rew_fn_0_potential_shaping(state, action, next_state, _):
@@ -56,6 +56,42 @@ def test_divergence_free_dist_reward_equivalence_constant_reward():
         action_sampler=GymSpaceSampler(space=action_space),
         discount_factor=1,
     ).distance(x, y, n_samples_cov=500, n_samples_can=2500)
+
+    print(dist)
+
+    assert np.isclose(dist, 0, atol=1e-7)
+
+
+def test_divergence_free_dist_reward_equivalence_constant_reward_multiple_dims():
+    state_space = gym.spaces.MultiDiscrete([10, 10])
+    action_space = gym.spaces.MultiDiscrete([10, 10])
+
+    x = rew_fn_0
+    y = rew_fn_0_potential_shaping
+
+    dist = divergence_free.DivergenceFree(
+        state_sampler=DummyGymStateSampler(space=state_space),
+        action_sampler=GymSpaceSampler(space=action_space),
+        discount_factor=1,
+    ).distance(x, y, n_samples_cov=500, n_samples_can=2500)
+
+    print(dist)
+
+    assert np.isclose(dist, 0, atol=1e-7)
+
+
+def test_divergence_free_dist_reward_equivalence_constant_reward_multiple_dims_continuous():
+    state_space = gym.spaces.Box(low=-10, high=10, shape=(10,))
+    action_space = gym.spaces.Box(low=-10, high=10, shape=(10,))
+
+    x = rew_fn_0
+    y = rew_fn_0_potential_shaping
+
+    dist = divergence_free.DivergenceFree(
+        state_sampler=DummyGymStateSampler(space=state_space),
+        action_sampler=GymSpaceSampler(space=action_space),
+        discount_factor=1,
+    ).distance(x, y, n_samples_cov=500, n_samples_can=10000)
 
     print(dist)
 

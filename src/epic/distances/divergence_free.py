@@ -51,7 +51,7 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         super().__init__(discount_factor, state_sampler, action_sampler, coverage_sampler)
 
         state_sample, _, _, _ = self.coverage_sampler.sample(1)
-        self.state_dim = np.prod(state_sample.shape[1:]) if state_sample.ndim > 1 else state_sample.shape[0]
+        self.state_dim = np.prod(state_sample.shape)
 
     def canonicalize(
         self,

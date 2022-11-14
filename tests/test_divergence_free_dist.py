@@ -1,6 +1,5 @@
 import gym
 import numpy as np
-import pytest
 
 from epic.distances import divergence_free
 from epic.samplers import DummyGymStateSampler, GymSpaceSampler
@@ -114,3 +113,6 @@ def test_divergence_free_dist_reward_equivalence_linear_reward():
     print(dist)
 
     assert np.isclose(dist, 0, atol=2e-1)
+
+
+test_divergence_free_dist_reward_equivalence_linear_reward()

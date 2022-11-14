@@ -12,6 +12,7 @@ import torch.optim as optim
 
 from epic import samplers, types, utils
 from epic.distances import base, pearson_mixin
+from epic.modules import Residual
 
 T_co = TypeVar("T_co", covariant=True)
 
@@ -51,7 +52,10 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         super().__init__(discount_factor, state_sampler, action_sampler, coverage_sampler)
 
         state_sample, _, _, _ = self.coverage_sampler.sample(1)
-        self.state_dim = np.prod(state_sample.shape)
+        self.state_dim = int(np.prod(state_sample.shape))
+
+    def init_potential_net(self):
+        """Initializes the neural net that'll be used to trained to strip potentials from reward functions during canonicalization."""
 
     def canonicalize(
         self,
@@ -69,21 +73,25 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         n_samples_can = n_samples_can or self.default_samples_can
         assert isinstance(n_samples_can, int)
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
         net = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(self.state_dim, max(self.state_dim * 4, 128)),
-            nn.ReLU(),
-            nn.Linear(max(self.state_dim * 4, 128), max(self.state_dim * 4, 128)),
-            nn.ReLU(),
-            nn.Linear(max(self.state_dim * 4, 128), 1),
+            *[
+                nn.Flatten(),
+                nn.Linear(self.state_dim, max(self.state_dim * 4, 128)),
+                nn.GELU(),
+                Residual(nn.Linear(max(self.state_dim * 4, 128), max(self.state_dim * 4, 128))),
+                nn.GELU(),
+                nn.Linear(max(self.state_dim * 4, 128), 1),
+            ],
         )
 
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         net.to(device)
 
-        max_epochs = 6000
+        max_epochs = 10000
         optimizer = optim.AdamW(net.parameters(), lr=6e-4)
+        scheduler = optim.lr_scheduler.LambdaLR(
+            optimizer, lambda epoch: 0.5 if (epoch > 5000 and epoch < 7500) else 0.25 if (epoch > 7500) else 1.0
+        )
 
         state_sample, action_sample, next_state_sample, done_sample = self.coverage_sampler.sample(
             n_samples_can,
@@ -114,14 +122,6 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             losses.append(pre_training_l2_loss.item())
 
         for _ in range(max_epochs):
-
-            state_sample_tensor = utils.float_tensor_from_numpy(state_sample, device)
-            next_state_sample_tensor = utils.float_tensor_from_numpy(next_state_sample, device)
-
-            if state_sample_tensor.ndim == 1:
-                assert next_state_sample_tensor.ndim == 1
-                state_sample_tensor.unsqueeze_(-1)
-                next_state_sample_tensor.unsqueeze_(-1)
             potential = (self.discount_factor * net(next_state_sample_tensor) - net(state_sample_tensor)).squeeze(-1)
             l2_loss = torch.mean(
                 (
@@ -139,10 +139,11 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             losses.append(l2_loss.item())
 
             # Early stopping if loss has stopped fluctuating
-            if len(losses) >= 450:
-                last_five_losses = losses[-450:]
+            if len(losses) >= 500:
+                last_five_losses = losses[-500:]
                 if np.max(last_five_losses) - np.min(last_five_losses) < 1e-6:
                     break
+            scheduler.step()
         # plt.plot(losses)
         # plt.show()
 
@@ -160,12 +161,15 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             """
             n_samples_cov = state.shape[0]
             assert n_samples_cov == action.shape[0] == next_state.shape[0] == done.shape[0]
+
             state_tensor = utils.float_tensor_from_numpy(state, "cpu")
             next_state_tensor = utils.float_tensor_from_numpy(next_state, "cpu")
             if state_tensor.ndim == 1:
                 assert next_state_tensor.ndim == 1
                 state_tensor.unsqueeze_(-1)
                 next_state_tensor.unsqueeze_(-1)
+
+            net.to("cpu")
 
             potential = utils.numpy_from_tensor(
                 (self.discount_factor * net(next_state_tensor) - net(state_tensor)).squeeze(-1),
@@ -177,7 +181,16 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
 
 
 def divergence_free_distance(
-    x, y, /, *, state_sampler, action_sampler, coverage_sampler, discount_factor, n_samples_cov: int, n_samples_can: int
+    x,
+    y,
+    /,
+    *,
+    state_sampler,
+    action_sampler,
+    coverage_sampler,
+    discount_factor,
+    n_samples_cov: int,
+    n_samples_can: int,
 ):
     """Calculates the divergence-free reward distance between two reward functions.
 

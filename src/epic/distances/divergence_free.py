@@ -1,6 +1,4 @@
-"""
-Implements Divergence-Free Rewards Distance Calculation.
-"""
+"""Implements Divergence-Free Rewards Distance Calculation."""
 
 from typing import Optional, TypeVar
 
@@ -9,7 +7,8 @@ import numpy.typing as npt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from einops import rearrange
+
+# import matplotlib.pyplot as plt
 
 from epic import samplers, types, utils
 from epic.distances import base, pearson_mixin
@@ -46,8 +45,11 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             assert (
                 state_sampler is None and action_sampler is None
             ), "If a coverage sampler is given, state and action samplers will not be used."
+
         coverage_sampler = coverage_sampler or samplers.ProductDistrCoverageSampler(action_sampler, state_sampler)
+
         super().__init__(discount_factor, state_sampler, action_sampler, coverage_sampler)
+
         state_sample, _, _, _ = self.coverage_sampler.sample(1)
         self.state_dim = np.prod(state_sample.shape[1:]) if state_sample.ndim > 1 else state_sample.shape[0]
 
@@ -80,47 +82,69 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
 
         net.to(device)
 
-        n_epochs = 100
-        mini_batch_size = n_samples_can // 100
-        optimizer = optim.AdamW(net.parameters(), lr=5e-5)
+        max_epochs = 6000
+        optimizer = optim.AdamW(net.parameters(), lr=6e-4)
 
         state_sample, action_sample, next_state_sample, done_sample = self.coverage_sampler.sample(
             n_samples_can,
         )
 
-        for epoch in range(n_epochs):
-            for i in range(0, n_samples_can // mini_batch_size):
-                state_sample_mb = state_sample[i * (mini_batch_size) : (i + 1) * (mini_batch_size)]
-                next_state_sample_mb = next_state_sample[i * (mini_batch_size) : (i + 1) * (mini_batch_size)]
-                action_sample_mb = action_sample[i * (mini_batch_size) : (i + 1) * (mini_batch_size)]
-                done_sample_mb = done_sample[i * (mini_batch_size) : (i + 1) * (mini_batch_size)]
+        state_sample_tensor = utils.float_tensor_from_numpy(state_sample, device)
+        next_state_sample_tensor = utils.float_tensor_from_numpy(next_state_sample, device)
 
-                state_sample_mb_tensor = utils.float_tensor_from_numpy(state_sample_mb, device)
-                next_state_sample_mb_tensor = utils.float_tensor_from_numpy(next_state_sample_mb, device)
+        losses = []
 
-                if state_sample_mb_tensor.ndim == 1:
-                    assert next_state_sample_mb_tensor.ndim == 1
-                    state_sample_mb_tensor.unsqueeze_(-1)
-                    next_state_sample_mb_tensor.unsqueeze_(-1)
-                potential = (
-                    self.discount_factor * net(next_state_sample_mb_tensor) - net(state_sample_mb_tensor)
-                ).squeeze(-1)
-                l2_loss = torch.mean(
-                    (
-                        utils.float_tensor_from_numpy(
-                            rew_fn(state_sample_mb, action_sample_mb, next_state_sample_mb, done_sample_mb),
-                            device,
-                        )
-                        + potential
+        with torch.inference_mode():
+            if state_sample_tensor.ndim == 1:
+                assert next_state_sample_tensor.ndim == 1
+                state_sample_tensor.unsqueeze_(-1)
+                next_state_sample_tensor.unsqueeze_(-1)
+
+            potential = (self.discount_factor * net(next_state_sample_tensor) - net(state_sample_tensor)).squeeze(-1)
+            pre_training_l2_loss = torch.mean(
+                (
+                    utils.float_tensor_from_numpy(
+                        rew_fn(state_sample, action_sample, next_state_sample, done_sample),
+                        device,
                     )
-                    ** 2,
+                    + potential
                 )
-                l2_loss.backward()
-                optimizer.step()
-                optimizer.zero_grad()
-            if epoch % 10 == 0:
-                print(l2_loss)
-        print("Finished Fitting")
+                ** 2,
+            )
+            losses.append(pre_training_l2_loss.item())
+
+        for _ in range(max_epochs):
+
+            state_sample_tensor = utils.float_tensor_from_numpy(state_sample, device)
+            next_state_sample_tensor = utils.float_tensor_from_numpy(next_state_sample, device)
+
+            if state_sample_tensor.ndim == 1:
+                assert next_state_sample_tensor.ndim == 1
+                state_sample_tensor.unsqueeze_(-1)
+                next_state_sample_tensor.unsqueeze_(-1)
+            potential = (self.discount_factor * net(next_state_sample_tensor) - net(state_sample_tensor)).squeeze(-1)
+            l2_loss = torch.mean(
+                (
+                    utils.float_tensor_from_numpy(
+                        rew_fn(state_sample, action_sample, next_state_sample, done_sample),
+                        device,
+                    )
+                    + potential
+                )
+                ** 2,
+            )
+            l2_loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            losses.append(l2_loss.item())
+
+            # Early stopping if loss has stopped fluctuating
+            if len(losses) >= 450:
+                last_five_losses = losses[-450:]
+                if np.max(last_five_losses) - np.min(last_five_losses) < 1e-6:
+                    break
+        # plt.plot(losses)
+        # plt.show()
 
         def canonical_reward_fn(state, action, next_state, done, /):
             """Divergence-Free canonical reward function.

@@ -26,6 +26,17 @@ class PearsonMixin:
         n_samples_cov: Optional[int],
         n_samples_can: Optional[int],
     ) -> float:
+        """Returns the Pearson Distance between two canonicalized reward functions
+
+        Args:
+            x_canonical (types.RewardFunction): A canonicalized reward function
+            y_canonical (types.RewardFunction): Another canonicalized reward function
+            n_samples_cov (Optional[int]): Number of samples to draw from the coverage distribution of states and actions
+            n_samples_can (Optional[int]): Number of samples to draw for canonicalization (unused here)
+
+        Returns:
+            float: The Pearson Distance between two reward functions, with special casing for one or both of the reward functions being constant. If both functions are constant, the distance is 0. If one function is constant, the distance is hard-coded to 0.5.
+        """
         if isinstance(self.coverage_sampler, samplers.BaseDatasetSampler):
             state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample = self.coverage_sampler.sample(
                 n_samples_cov,

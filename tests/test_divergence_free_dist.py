@@ -38,7 +38,7 @@ def test_divergence_free_dist_no_errors():
         state_sampler=DummyGymStateSampler(space=state_space),
         action_sampler=GymSpaceSampler(space=action_space),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=500, n_samples_can=500)
+    ).distance(x, y, n_samples_cov=500, n_samples_can=1000)
 
     assert isinstance(dist, float)
     assert not np.isnan(dist)
@@ -55,11 +55,11 @@ def test_divergence_free_dist_reward_equivalence_constant_reward():
         state_sampler=DummyGymStateSampler(space=state_space),
         action_sampler=GymSpaceSampler(space=action_space),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=500, n_samples_can=10000)
+    ).distance(x, y, n_samples_cov=500, n_samples_can=2500)
 
     print(dist)
 
-    assert np.isclose(dist, 0, atol=1e-2)
+    assert np.isclose(dist, 0, atol=1e-7)
 
 
 def test_divergence_free_dist_reward_equivalence_linear_reward():
@@ -73,8 +73,8 @@ def test_divergence_free_dist_reward_equivalence_linear_reward():
         state_sampler=DummyGymStateSampler(space=state_space),
         action_sampler=GymSpaceSampler(space=action_space),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=500, n_samples_can=10000)
+    ).distance(x, y, n_samples_cov=500, n_samples_can=5000)
 
     print(dist)
 
-    assert np.isclose(dist, 0, atol=5e-2)
+    assert np.isclose(dist, 0, atol=2e-1)

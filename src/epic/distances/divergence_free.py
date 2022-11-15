@@ -131,9 +131,14 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             shaping = (self.discount_factor * net(next_state_tensor) - net(state_tensor)).squeeze(-1)
 
             if not return_tensor:
-                return rew_fn(state, action, next_state, done) + utils.numpy_from_tensor(shaping)
+                rew_fn_out = rew_fn(state, action, next_state, done)
+                shaping = utils.numpy_from_tensor(shaping)
+                assert rew_fn_out.ndim == shaping.ndim, "Reward Function's output shouldn't be broadcasted."
+                return rew_fn_out + shaping
             else:
-                return utils.float_tensor_from_numpy(rew_fn(state, action, next_state, done), device) + shaping
+                rew_fn_out = utils.float_tensor_from_numpy(rew_fn(state, action, next_state, done), device)
+                assert rew_fn_out.ndim == shaping.ndim, "Reward Function's output shouldn't be broadcasted."
+                return rew_fn_out + shaping
 
         for _ in tqdm(range(max_epochs)):
             transitions_dataset.shuffle()
@@ -166,8 +171,8 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 if np.max(losses_window) - np.min(losses_window) < 1e-6:
                     break
             scheduler.step()
-        # plt.plot(losses)
-        # plt.show()
+        plt.plot(losses)
+        plt.show()
 
         return canonical_reward_fn
 

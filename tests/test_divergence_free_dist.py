@@ -7,11 +7,11 @@ import einops
 
 
 def rew_fn_0(state, action, next_state, _):
-    return einops.reduce(np.zeros(state.shape[0]), "b ... -> b", "sum")
+    return einops.reduce(np.zeros(state.shape[0]), "batch ... -> batch", "sum")
 
 
 def rew_fn_0_potential_shaping(state, action, next_state, _):
-    return einops.reduce((2.0 * next_state - 2.0 * state), "b ... -> b", "sum")
+    return einops.reduce((2.0 * next_state - 2.0 * state), "batch ... -> batch", "sum")
 
 
 def rew_fn_1(state, action, next_state, _):
@@ -23,7 +23,11 @@ def rew_fn_1_potential_shaping(state, action, next_state, _):
 
 
 def rew_fn_2(state, action, next_state, _):
-    return state**2 + next_state**2 + 2 * action
+    return action + np.log(next_state + 1) - state**2
+
+
+def rew_fn_2_potential_shaping(state, action, next_state, _):
+    return action + np.log(next_state + 1) - state**2 + 3 * np.sqrt(next_state) - 4 * state
 
 
 def test_divergence_free_dist_no_errors():
@@ -123,3 +127,26 @@ def test_divergence_free_dist_reward_equivalence_linear_reward():
     print(dist)
 
     assert np.isclose(dist, 0, atol=2e-2)
+
+
+def test_divergence_free_dist_reward_equivalence_complex_reward():
+    state_space = gym.spaces.Discrete(10)
+    action_space = gym.spaces.Discrete(10)
+
+    x = rew_fn_2
+    y = rew_fn_2_potential_shaping
+
+    dist = divergence_free.DivergenceFree(
+        coverage_sampler=samplers.ProductDistrCoverageSampler(
+            samplers.GymSpaceSampler(space=action_space),
+            samplers.DummyGymStateSampler(space=state_space),
+        ),
+        discount_factor=0.75,
+    ).distance(x, y, n_samples_cov=10000, n_samples_can=400000)
+
+    print(dist)
+
+    assert np.isclose(dist, 0, atol=5e-2)
+
+
+test_divergence_free_dist_reward_equivalence_complex_reward()

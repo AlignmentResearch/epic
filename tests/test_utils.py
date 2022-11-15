@@ -1,5 +1,5 @@
 import numpy as np
-import torch as torch
+import torch
 import pytest
 
 from epic import utils

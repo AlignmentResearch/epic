@@ -28,18 +28,12 @@ class Distance(abc.ABC):
     """
 
     coverage_sampler: samplers.BaseSampler[samplers.CoverageSample]
-    state_sampler: Optional[samplers.BaseSampler[samplers.StateSample]]
-    action_sampler: Optional[samplers.BaseSampler[npt.NDArray]]
 
     def __init__(
         self,
         discount_factor: float,
-        state_sampler: Optional[samplers.BaseSampler[samplers.StateSample]],
-        action_sampler: Optional[samplers.BaseSampler[npt.NDArray]],
-        coverage_sampler: Optional[samplers.BaseSampler[samplers.CoverageSample]],
+        coverage_sampler: samplers.BaseSampler[samplers.CoverageSample],
     ):
-        self.state_sampler = state_sampler
-        self.action_sampler = action_sampler
         self.coverage_sampler = coverage_sampler
         self.discount_factor = discount_factor
 

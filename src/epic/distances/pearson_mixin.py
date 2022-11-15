@@ -49,9 +49,7 @@ class PearsonMixin:
         x_samples = x_canonical(state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample)
         y_samples = y_canonical(state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample)
 
-        print(np.var(x_samples))
-        print(np.var(y_samples))
-
+        # TODO: find a more permanent solution for this
         # handle cases with constant reward function
         if np.var(x_samples) < 1e-2 and np.var(y_samples) < 1e-2:
             return 0.0

@@ -1,6 +1,6 @@
 """Implements Divergence-Free Rewards Distance Calculation."""
 
-from typing import Optional, TypeVar
+from typing import Optional, TypeVar, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -10,9 +10,8 @@ import torch.optim as optim
 
 # import matplotlib.pyplot as plt
 
-from epic import samplers, types, utils
+from epic import samplers, types, utils, modules
 from epic.distances import base, pearson_mixin
-from epic.modules import Residual
 
 T_co = TypeVar("T_co", covariant=True)
 
@@ -24,38 +23,18 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
     def __init__(
         self,
         discount_factor: float,
-        state_sampler: Optional[samplers.BaseSampler[samplers.StateSample]] = None,
-        action_sampler: Optional[samplers.BaseSampler[npt.NDArray]] = None,
-        coverage_sampler: Optional[samplers.BaseSampler[samplers.CoverageSample]] = None,
+        coverage_sampler: samplers.BaseSampler[samplers.CoverageSample],
     ):
         """Initialize the Divergence-Free Reward Distance.
 
         Args:
-          state_sampler: The sampler for the state distribution. Optional if the coverage_sampler is provided.
-          action_sampler: The sampler for the action distribution. Optional if the coverage_sampler is provided.
-          coverage_sampler: The sampler for the coverage distribution. If not given,
-            a default sampler is constructed as drawing from the product
-            distribution induced by the distributions of state and action.
+          coverage_sampler: The sampler for the coverage distribution.
           discount_factor: The discount factor.
         """
-        if coverage_sampler is None:
-            assert (
-                state_sampler is not None and action_sampler is not None
-            ), "If no coverage sampler is given, state and action samplers must be provided."
-        else:
-            assert (
-                state_sampler is None and action_sampler is None
-            ), "If a coverage sampler is given, state and action samplers will not be used."
-
-        coverage_sampler = coverage_sampler or samplers.ProductDistrCoverageSampler(action_sampler, state_sampler)
-
-        super().__init__(discount_factor, state_sampler, action_sampler, coverage_sampler)
+        super().__init__(discount_factor, coverage_sampler)
 
         state_sample, _, _, _ = self.coverage_sampler.sample(1)
         self.state_dim = int(np.prod(state_sample.shape))
-
-    def init_potential_net(self):
-        """Initializes the neural net that'll be used to trained to strip potentials from reward functions during canonicalization."""
 
     def canonicalize(
         self,
@@ -73,63 +52,101 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         n_samples_can = n_samples_can or self.default_samples_can
         assert isinstance(n_samples_can, int)
 
+        ff_dim = max(self.state_dim * 4, 128)
+
         net = nn.Sequential(
             *[
                 nn.Flatten(),
-                nn.Linear(self.state_dim, max(self.state_dim * 4, 128)),
-                nn.GELU(),
-                Residual(nn.Linear(max(self.state_dim * 4, 128), max(self.state_dim * 4, 128))),
-                nn.GELU(),
-                nn.Linear(max(self.state_dim * 4, 128), 1),
+                nn.Linear(self.state_dim, ff_dim),
+                modules.Residual(
+                    nn.Sequential(
+                        nn.GELU(),
+                        nn.Linear(ff_dim, ff_dim),
+                        nn.GELU(),
+                    ),
+                ),
+                nn.Linear(ff_dim, 1),
             ],
         )
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         net.to(device)
 
-        max_epochs = 10000
+        max_epochs = 7500
         optimizer = optim.AdamW(net.parameters(), lr=6e-4)
         scheduler = optim.lr_scheduler.LambdaLR(
-            optimizer, lambda epoch: 0.5 if (epoch > 5000 and epoch < 7500) else 0.25 if (epoch > 7500) else 1.0
+            optimizer,
+            lambda epoch: 0.5 if (epoch > 5000 and epoch < 7500) else 0.25 if (epoch > 7500) else 1.0,
         )
 
         state_sample, action_sample, next_state_sample, done_sample = self.coverage_sampler.sample(
             n_samples_can,
         )
 
-        state_sample_tensor = utils.float_tensor_from_numpy(state_sample, device)
-        next_state_sample_tensor = utils.float_tensor_from_numpy(next_state_sample, device)
-
         losses = []
 
-        with torch.inference_mode():
-            if state_sample_tensor.ndim == 1:
-                assert next_state_sample_tensor.ndim == 1
-                state_sample_tensor.unsqueeze_(-1)
-                next_state_sample_tensor.unsqueeze_(-1)
+        def canonical_reward_fn(
+            state, action, next_state, done, /, return_tensor: bool = False, device: Union[str, torch.device] = "cpu"
+        ):
+            """Divergence-Free canonical reward function.
 
-            potential = (self.discount_factor * net(next_state_sample_tensor) - net(state_sample_tensor)).squeeze(-1)
+            Args:
+                state: The batch of state samples from the coverage distribution.
+                action: The batch of action samples from the coverage distribution.
+                next_state: The batch of next state samples from the coverage distribution.
+                done: The batch of done samples from the coverage distribution.
+                return_tensor: Whether to return a torch.Tensor or a numpy nd.array.
+                device: The device on which to conduct computations.
+
+            Returns:
+                The canonicalized reward function.
+            """
+            n_samples_cov = state.shape[0]
+            assert n_samples_cov == action.shape[0] == next_state.shape[0] == done.shape[0]
+
+            state_tensor = utils.float_tensor_from_numpy(state, device)
+            next_state_tensor = utils.float_tensor_from_numpy(next_state, device)
+            if state_tensor.ndim == 1:
+                assert next_state_tensor.ndim == 1
+                state_tensor.unsqueeze_(-1)
+                next_state_tensor.unsqueeze_(-1)
+
+            net.to(device)
+
+            shaping = (self.discount_factor * net(next_state_tensor) - net(state_tensor)).squeeze(-1)
+
+            if not return_tensor:
+                return rew_fn(state, action, next_state, done) + utils.numpy_from_tensor(shaping)
+            else:
+                return utils.float_tensor_from_numpy(rew_fn(state, action, next_state, done), device) + shaping
+
+        with torch.inference_mode():
             pre_training_l2_loss = torch.mean(
                 (
-                    utils.float_tensor_from_numpy(
-                        rew_fn(state_sample, action_sample, next_state_sample, done_sample),
-                        device,
+                    canonical_reward_fn(
+                        state_sample,
+                        action_sample,
+                        next_state_sample,
+                        done_sample,
+                        return_tensor=True,
+                        device=device,
                     )
-                    + potential
                 )
                 ** 2,
             )
             losses.append(pre_training_l2_loss.item())
 
         for _ in range(max_epochs):
-            potential = (self.discount_factor * net(next_state_sample_tensor) - net(state_sample_tensor)).squeeze(-1)
             l2_loss = torch.mean(
                 (
-                    utils.float_tensor_from_numpy(
-                        rew_fn(state_sample, action_sample, next_state_sample, done_sample),
-                        device,
+                    canonical_reward_fn(
+                        state_sample,
+                        action_sample,
+                        next_state_sample,
+                        done_sample,
+                        return_tensor=True,
+                        device=device,
                     )
-                    + potential
                 )
                 ** 2,
             )
@@ -140,42 +157,12 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
 
             # Early stopping if loss has stopped fluctuating
             if len(losses) >= 500:
-                last_five_losses = losses[-500:]
-                if np.max(last_five_losses) - np.min(last_five_losses) < 1e-6:
+                losses_window = losses[-500:]
+                if np.max(losses_window) - np.min(losses_window) < 1e-6:
                     break
             scheduler.step()
         # plt.plot(losses)
         # plt.show()
-
-        def canonical_reward_fn(state, action, next_state, done, /):
-            """Divergence-Free canonical reward function.
-
-            Args:
-                state: The batch of state samples from the coverage distribution.
-                action: The batch of action samples from the coverage distribution.
-                next_state: The batch of next state samples from the coverage distribution.
-                done: The batch of done samples from the coverage distribution.
-
-            Returns:
-                The canonicalized reward function.
-            """
-            n_samples_cov = state.shape[0]
-            assert n_samples_cov == action.shape[0] == next_state.shape[0] == done.shape[0]
-
-            state_tensor = utils.float_tensor_from_numpy(state, "cpu")
-            next_state_tensor = utils.float_tensor_from_numpy(next_state, "cpu")
-            if state_tensor.ndim == 1:
-                assert next_state_tensor.ndim == 1
-                state_tensor.unsqueeze_(-1)
-                next_state_tensor.unsqueeze_(-1)
-
-            net.to("cpu")
-
-            potential = utils.numpy_from_tensor(
-                (self.discount_factor * net(next_state_tensor) - net(state_tensor)).squeeze(-1),
-            )
-
-            return rew_fn(state, action, next_state, done) + potential
 
         return canonical_reward_fn
 

@@ -1,4 +1,3 @@
-# %%
 import torch.nn as nn
 
 
@@ -12,6 +11,3 @@ class Residual(nn.Module):
 
     def forward(self, x):
         return x + self.module(x)
-
-
-# %%

@@ -33,10 +33,10 @@ class EPIC(pearson_mixin.PearsonMixin, base.Distance):
             discount_factor: The discount factor.
         """
         coverage_sampler = coverage_sampler or samplers.ProductDistrCoverageSampler(action_sampler, state_sampler)
+        self.action_sampler = action_sampler
+        self.state_sampler = state_sampler
         super().__init__(
             discount_factor,
-            state_sampler,
-            action_sampler,
             coverage_sampler,
         )
 

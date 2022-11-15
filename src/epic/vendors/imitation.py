@@ -7,14 +7,14 @@ from imitation.rewards import reward_nets
 from imitation.data import types as imit_types, rollout as imit_rollout
 
 
-from epic import types, samplers
+from epic import types, samplers, utils
 
 
 def reward_net_to_fn(reward_net: reward_nets.RewardNet) -> types.RewardFunction:
     """Converts an imitation reward net to a reward function."""
 
     def reward_fn(state, action, next_state, done):
-        return reward_net.forward(state, action, next_state, done).cpu().detach().numpy()
+        return utils.numpy_from_tensor(reward_net.forward(state, action, next_state, done))
 
     return reward_fn
 

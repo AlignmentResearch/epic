@@ -118,8 +118,8 @@ def test_divergence_free_dist_reward_equivalence_linear_reward():
             samplers.DummyGymStateSampler(space=state_space),
         ),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=500, n_samples_can=5000)
+    ).distance(x, y, n_samples_cov=10000, n_samples_can=300000)
 
     print(dist)
 
-    assert np.isclose(dist, 0, atol=2e-1)
+    assert np.isclose(dist, 0, atol=2e-2)

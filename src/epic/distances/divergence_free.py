@@ -7,10 +7,11 @@ import numpy.typing as npt
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from tqdm import tqdm
 
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
-from epic import samplers, types, utils, modules
+from epic import samplers, types, utils, torch_modules
 from epic.distances import base, pearson_mixin
 
 T_co = TypeVar("T_co", covariant=True)
@@ -58,13 +59,15 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             *[
                 nn.Flatten(),
                 nn.Linear(self.state_dim, ff_dim),
-                modules.Residual(
+                nn.ReLU(),
+                torch_modules.Residual(
                     nn.Sequential(
-                        nn.GELU(),
                         nn.Linear(ff_dim, ff_dim),
-                        nn.GELU(),
+                        nn.ReLU(),
+                        nn.Linear(ff_dim, ff_dim),
                     ),
                 ),
+                nn.ReLU(),
                 nn.Linear(ff_dim, 1),
             ],
         )
@@ -72,21 +75,33 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         device = "cuda" if torch.cuda.is_available() else "cpu"
         net.to(device)
 
-        max_epochs = 7500
-        optimizer = optim.AdamW(net.parameters(), lr=6e-4)
+        max_epochs = 10000
+        optimizer = optim.AdamW(net.parameters(), lr=1e-3)
         scheduler = optim.lr_scheduler.LambdaLR(
             optimizer,
-            lambda epoch: 0.5 if (epoch > 5000 and epoch < 7500) else 0.25 if (epoch > 7500) else 1.0,
+            lambda epoch: 0.5 if (epoch > 5000 and epoch < 75000) else 0.25 if (epoch > 7500) else 1.0,
         )
 
-        state_sample, action_sample, next_state_sample, done_sample = self.coverage_sampler.sample(
-            n_samples_can,
+        transitions_dataset = torch_modules.TransitionsDataset(
+            *(
+                self.coverage_sampler.sample(
+                    n_samples_can,
+                )
+            )
         )
+
+        batch_size = n_samples_can
 
         losses = []
 
         def canonical_reward_fn(
-            state, action, next_state, done, /, return_tensor: bool = False, device: Union[str, torch.device] = "cpu"
+            state,
+            action,
+            next_state,
+            done,
+            /,
+            return_tensor: bool = False,
+            device: Union[str, torch.device] = "cpu",
         ):
             """Divergence-Free canonical reward function.
 
@@ -120,44 +135,34 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             else:
                 return utils.float_tensor_from_numpy(rew_fn(state, action, next_state, done), device) + shaping
 
-        with torch.inference_mode():
-            pre_training_l2_loss = torch.mean(
-                (
-                    canonical_reward_fn(
-                        state_sample,
-                        action_sample,
-                        next_state_sample,
-                        done_sample,
-                        return_tensor=True,
-                        device=device,
-                    )
-                )
-                ** 2,
-            )
-            losses.append(pre_training_l2_loss.item())
+        for _ in tqdm(range(max_epochs)):
+            transitions_dataset.shuffle()
+            for i in range(len(transitions_dataset) // batch_size):
+                state_sample, action_sample, next_state_sample, done_sample = transitions_dataset[
+                    i * batch_size : (i + 1) * batch_size
+                ]
 
-        for _ in range(max_epochs):
-            l2_loss = torch.mean(
-                (
-                    canonical_reward_fn(
-                        state_sample,
-                        action_sample,
-                        next_state_sample,
-                        done_sample,
-                        return_tensor=True,
-                        device=device,
+                l2_loss = torch.mean(
+                    (
+                        canonical_reward_fn(
+                            state_sample,
+                            action_sample,
+                            next_state_sample,
+                            done_sample,
+                            return_tensor=True,
+                            device=device,
+                        )
                     )
+                    ** 2,
                 )
-                ** 2,
-            )
-            l2_loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-            losses.append(l2_loss.item())
+                l2_loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
+                losses.append(l2_loss.item())
 
             # Early stopping if loss has stopped fluctuating
-            if len(losses) >= 500:
-                losses_window = losses[-500:]
+            if len(losses) >= 1000:
+                losses_window = losses[-1000:]
                 if np.max(losses_window) - np.min(losses_window) < 1e-6:
                     break
             scheduler.step()

@@ -44,7 +44,7 @@ setup(
     packages=find_packages("src"),
     package_dir={"": "src"},
     package_data={"imitation": ["py.typed"]},
-    python_requires=">=3.9",
+    python_requires=">=3.8",
     install_requires=[
         "numpy",
         "torch",

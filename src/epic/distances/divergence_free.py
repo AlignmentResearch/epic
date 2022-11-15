@@ -1,6 +1,6 @@
 """Implements Divergence-Free Rewards Distance Calculation."""
 
-from typing import Optional, TypeVar, Union
+from typing import Optional, TypeVar, Union, Dict, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
+from stable_baselines3.common.utils import configure_logger
 
 import matplotlib.pyplot as plt
 
@@ -25,17 +26,43 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         self,
         discount_factor: float,
         coverage_sampler: samplers.BaseSampler[samplers.CoverageSample],
+        architecture_hyperparams: Optional[Dict[str, Any]] = None,
+        training_hyperparams: Optional[Dict[str, Any]] = None,
+        use_logger: bool = False,
+        tensorboard_log: Optional[str] = None,
+        tb_log_name: str = "",
     ):
         """Initialize the Divergence-Free Reward Distance.
 
         Args:
           coverage_sampler: The sampler for the coverage distribution.
           discount_factor: The discount factor.
+          architecture_hyperparams: A dictionary keeping track of different hyperparametes for the neural network architecture.
+          training_hyperparams: A dictionary keeping track of different hyperparametes for the neural network training.
+          use_logger: Whether or not to configure and use a logger.
+          tensorboard_log: The path to the tensorboard log directory.
+          tb_log_name: The name of the tensorboard log.
+
         """
         super().__init__(discount_factor, coverage_sampler)
 
         state_sample, _, _, _ = self.coverage_sampler.sample(1)
         self.state_dim = int(np.prod(state_sample.shape))
+
+        self.architecture_hyperparams = architecture_hyperparams or dict(
+            depth=1, hidden_dim=max(self.state_dim * 4, 128)
+        )
+        self.training_hyperparams = training_hyperparams or dict(
+            lr=1e-3,
+            max_epochs=10000,
+            use_scheduler=True,
+            batch_size=self.default_samples_can,
+            device="cuda" if torch.cuda.is_available() else "cpu",
+            early_stopping=True,
+            early_stopping_patience=1000,
+        )
+        if use_logger:
+            self.logger = configure_logger(verbose=1, tensorboard_log=tensorboard_log, tb_log_name=tb_log_name)
 
     def canonicalize(
         self,
@@ -53,34 +80,46 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         n_samples_can = n_samples_can or self.default_samples_can
         assert isinstance(n_samples_can, int)
 
-        ff_dim = max(self.state_dim * 4, 128)
-
         net = nn.Sequential(
             *[
                 nn.Flatten(),
-                nn.Linear(self.state_dim, ff_dim),
+                nn.Linear(self.state_dim, self.architecture_hyperparams["hidden_dim"]),
                 nn.ReLU(),
-                torch_modules.Residual(
-                    nn.Sequential(
-                        nn.Linear(ff_dim, ff_dim),
-                        nn.ReLU(),
-                        nn.Linear(ff_dim, ff_dim),
-                    ),
-                ),
+                *[
+                    torch_modules.Residual(
+                        nn.Sequential(
+                            nn.Linear(
+                                self.architecture_hyperparams["hidden_dim"], self.architecture_hyperparams["hidden_dim"]
+                            ),
+                            nn.ReLU(),
+                            nn.Linear(
+                                self.architecture_hyperparams["hidden_dim"], self.architecture_hyperparams["hidden_dim"]
+                            ),
+                        ),
+                    )
+                    for _ in range(self.architecture_hyperparams["depth"])
+                ],
                 nn.ReLU(),
-                nn.Linear(ff_dim, 1),
+                nn.Linear(self.architecture_hyperparams["hidden_dim"], 1),
             ],
         )
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = self.training_hyperparams["device"]
         net.to(device)
 
-        max_epochs = 10000
-        optimizer = optim.AdamW(net.parameters(), lr=1e-3)
-        scheduler = optim.lr_scheduler.LambdaLR(
-            optimizer,
-            lambda epoch: 0.5 if (epoch > 5000 and epoch < 75000) else 0.25 if (epoch > 7500) else 1.0,
-        )
+        lr = self.training_hyperparams["lr"]
+        max_epochs = self.training_hyperparams["max_epochs"]
+
+        optimizer = optim.AdamW(net.parameters(), lr=lr)
+        if self.training_hyperparams["use_scheduler"]:
+            scheduler = optim.lr_scheduler.LambdaLR(
+                optimizer,
+                lambda epoch: 0.5 if (epoch > 5000 and epoch < 75000) else 0.25 if (epoch > 7500) else 1.0,
+            )
+        else:
+            scheduler = optim.lr_scheduler.LambdaLR(
+                optimizer,
+                lambda _: 1.0,
+            )
 
         transitions_dataset = torch_modules.TransitionsDataset(
             *(
@@ -90,7 +129,7 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             )
         )
 
-        batch_size = n_samples_can
+        batch_size = self.training_hyperparams["batch_size"]
 
         losses = []
 
@@ -130,15 +169,15 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
 
             shaping = (self.discount_factor * net(next_state_tensor) - net(state_tensor)).squeeze(-1)
 
-            if not return_tensor:
-                rew_fn_out = rew_fn(state, action, next_state, done)
-                shaping = utils.numpy_from_tensor(shaping)
-                assert rew_fn_out.ndim == shaping.ndim, "Reward Function's output shouldn't be broadcasted."
-                return rew_fn_out + shaping
-            else:
+            if return_tensor:
                 rew_fn_out = utils.float_tensor_from_numpy(rew_fn(state, action, next_state, done), device)
                 assert rew_fn_out.ndim == shaping.ndim, "Reward Function's output shouldn't be broadcasted."
                 return rew_fn_out + shaping
+
+            rew_fn_out = rew_fn(state, action, next_state, done)
+            shaping = utils.numpy_from_tensor(shaping)
+            assert rew_fn_out.ndim == shaping.ndim, "Reward Function's output shouldn't be broadcasted."
+            return rew_fn_out + shaping
 
         for _ in tqdm(range(max_epochs)):
             transitions_dataset.shuffle()
@@ -166,10 +205,11 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 losses.append(l2_loss.item())
 
             # Early stopping if loss has stopped fluctuating
-            if len(losses) >= 1000:
-                losses_window = losses[-1000:]
-                if np.max(losses_window) - np.min(losses_window) < 1e-6:
-                    break
+            if self.training_hyperparams["early_stopping"]:
+                if len(losses) >= self.training_hyperparams["early_stopping_patience"]:
+                    losses_window = losses[-self.training_hyperparams["early_stopping_patience"] :]
+                    if np.max(losses_window) - np.min(losses_window) < 1e-6:
+                        break
             scheduler.step()
         plt.plot(losses)
         plt.show()

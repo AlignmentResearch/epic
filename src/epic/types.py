@@ -1,12 +1,10 @@
 import abc
 from typing import Protocol, Callable, Union
+from dataclasses import dataclass
 
 import numpy as np
 import numpy.typing as npt
-
-# import torch
-
-# from epic import utils
+import torch
 
 
 class RewardFunction(Protocol):
@@ -33,38 +31,38 @@ class RewardFunction(Protocol):
         """
 
 
-# class PotentialShapingFunction(Protocol):
-#     """Abstract class for a potential shaping function."""
+@dataclass(frozen=True)
+class PotentialArchitectureHyperparams:
+    """Hyperparameters for the potential function architecture.
 
-#     def __call__(
-#         self,
-#         state: Union[npt.NDArray, torch.Tensor],
-#         next_state: Union[npt.NDArray, torch.Tensor],
-#         potential: Callable,
-#         discount_factor: float,
-#         /,
-#         return_tensor: bool = False,
-#     ) -> Union[npt.NDArray, torch.Tensor]:
-#         """Compute potential shaping function outputs for a batch of state transitions.
-#         Args:
-#             state: Current states of shape `(batch_size,) + state_shape`.
-#             next_state: Successor states of shape `(batch_size,) + state_shape`.
-#             potential: The potential function. Responsibility is on caller to ensure
-#             that it will accept the types of state and next_state.
-#             discount_factor: The discount applied to the next state.
-#             return_tensor: Whether to return a PyTorch Tensor or a numpy nd.array.
-#         """
-#         if isinstance(state, torch.Tensor):
-#             assert isinstance(next_state, torch.Tensor), "State and Next State are not of the same type."
-#             if return_tensor:
-#                 return (discount_factor * potential(next_state) - potential(state)).reshape(-1)
-#             else:
-#                 return utils.numpy_from_tensor(discount_factor * potential(next_state) - potential(state)).reshape(-1)
-#         else:
-#             assert isinstance(next_state, np.ndarray), "State and Next State are not of the same type."
-#             if return_tensor:
-#                 return utils.float_tensor_from_numpy(
-#                     discount_factor * potential(next_state) - potential(state)
-#                 ).reshape(-1)
-#             else:
-#                 return (discount_factor * potential(next_state) - potential(state)).reshape(-1)
+    Args:
+        depth: Number of Residual MLP layers in the potential function.
+        hidden_dim: Dimension of the hidden layers in the potential function.
+    """
+
+    depth: int = 1
+    hidden_dim: int = 128
+
+
+class PotentialTrainingHyperparams:
+    """Hyperparameters for training the potential function.
+
+    Args:
+        learning_rate: Learning rate for the potential function.
+        weight_decay: Weight decay for the potential function.
+        max_epochs: Maximum number of epochs to train the potential function.
+        batch_size: Batch size for training the potential function.
+        use_scheduler: Whether to use a learning rate scheduler.
+        device: Device on which to train the potential function.
+        early_stopping: Whether to use early stopping.
+        early_stopping_patience: Patience for early stopping.
+    """
+
+    learning_rate: float = 1e-3
+    weight_decay: float = 1e-2
+    max_epochs: int = 10000
+    batch_size: int = 10000
+    device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu"
+    use_scheduler: bool = True
+    early_stopping: bool = True
+    early_stopping_patience: int = 1000

@@ -43,7 +43,7 @@ def test_divergence_free_dist_no_errors():
             samplers.DummyGymStateSampler(space=state_space),
         ),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=500, n_samples_can=1000)
+    ).distance(x, y, n_samples_cov=100, n_samples_can=100)
 
     assert isinstance(dist, float)
     assert not np.isnan(dist)
@@ -147,6 +147,3 @@ def test_divergence_free_dist_reward_equivalence_complex_reward():
     print(dist)
 
     assert np.isclose(dist, 0, atol=5e-2)
-
-
-test_divergence_free_dist_reward_equivalence_complex_reward()

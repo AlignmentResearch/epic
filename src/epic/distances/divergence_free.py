@@ -26,8 +26,8 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         self,
         discount_factor: float,
         coverage_sampler: samplers.BaseSampler[samplers.CoverageSample],
-        architecture_hyperparams: Optional[Dict[str, Any]] = None,
-        training_hyperparams: Optional[Dict[str, Any]] = None,
+        architecture_hyperparams: Optional[types.PotentialArchitectureHyperparams] = None,
+        training_hyperparams: Optional[types.PotentialTrainingHyperparams] = None,
         use_logger: bool = False,
         tensorboard_log: Optional[str] = None,
         tb_log_name: str = "",
@@ -37,8 +37,8 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         Args:
           coverage_sampler: The sampler for the coverage distribution.
           discount_factor: The discount factor.
-          architecture_hyperparams: A dictionary keeping track of different hyperparametes for the neural network architecture.
-          training_hyperparams: A dictionary keeping track of different hyperparametes for the neural network training.
+          architecture_hyperparams: A dataclass keeping track of different hyperparameters for the neural network architecture.
+          training_hyperparams: A dataclass keeping track of different hyperparameters for the neural network training.
           use_logger: Whether or not to configure and use a logger.
           tensorboard_log: The path to the tensorboard log directory.
           tb_log_name: The name of the tensorboard log.
@@ -49,18 +49,11 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         state_sample, _, _, _ = self.coverage_sampler.sample(1)
         self.state_dim = int(np.prod(state_sample.shape))
 
-        self.architecture_hyperparams = architecture_hyperparams or dict(
-            depth=1, hidden_dim=max(self.state_dim * 4, 128)
+        self.architecture_hyperparams = architecture_hyperparams or types.PotentialArchitectureHyperparams(
+            hidden_dim=max(4 * self.state_dim, 128)
         )
-        self.training_hyperparams = training_hyperparams or dict(
-            lr=1e-3,
-            max_epochs=10000,
-            use_scheduler=True,
-            batch_size=self.default_samples_can,
-            device="cuda" if torch.cuda.is_available() else "cpu",
-            early_stopping=True,
-            early_stopping_patience=1000,
-        )
+        self.training_hyperparams = training_hyperparams or types.PotentialTrainingHyperparams()
+
         if use_logger:
             self.logger = configure_logger(verbose=1, tensorboard_log=tensorboard_log, tb_log_name=tb_log_name)
 
@@ -83,34 +76,35 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         net = nn.Sequential(
             *[
                 nn.Flatten(),
-                nn.Linear(self.state_dim, self.architecture_hyperparams["hidden_dim"]),
+                nn.Linear(self.state_dim, self.architecture_hyperparams.hidden_dim),
                 nn.ReLU(),
                 *[
                     torch_modules.Residual(
                         nn.Sequential(
                             nn.Linear(
-                                self.architecture_hyperparams["hidden_dim"], self.architecture_hyperparams["hidden_dim"]
+                                self.architecture_hyperparams.hidden_dim, self.architecture_hyperparams.hidden_dim
                             ),
                             nn.ReLU(),
                             nn.Linear(
-                                self.architecture_hyperparams["hidden_dim"], self.architecture_hyperparams["hidden_dim"]
+                                self.architecture_hyperparams.hidden_dim, self.architecture_hyperparams.hidden_dim
                             ),
                         ),
                     )
-                    for _ in range(self.architecture_hyperparams["depth"])
+                    for _ in range(self.architecture_hyperparams.depth)
                 ],
-                nn.ReLU(),
-                nn.Linear(self.architecture_hyperparams["hidden_dim"], 1),
+                nn.ReLU() if self.architecture_hyperparams.depth else nn.Identity(),
+                nn.Linear(self.architecture_hyperparams.hidden_dim, 1),
             ],
         )
-        device = self.training_hyperparams["device"]
+        device = self.training_hyperparams.device
         net.to(device)
 
-        lr = self.training_hyperparams["lr"]
-        max_epochs = self.training_hyperparams["max_epochs"]
+        learning_rate = self.training_hyperparams.learning_rate
+        weight_decay = self.training_hyperparams.weight_decay
+        max_epochs = self.training_hyperparams.max_epochs
 
-        optimizer = optim.AdamW(net.parameters(), lr=lr)
-        if self.training_hyperparams["use_scheduler"]:
+        optimizer = optim.AdamW(net.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        if self.training_hyperparams.use_scheduler:
             scheduler = optim.lr_scheduler.LambdaLR(
                 optimizer,
                 lambda epoch: 0.5 if (epoch > 5000 and epoch < 75000) else 0.25 if (epoch > 7500) else 1.0,
@@ -129,7 +123,9 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             )
         )
 
-        batch_size = self.training_hyperparams["batch_size"]
+        self.training_hyperparams.batch_size = min(self.training_hyperparams.batch_size, n_samples_can)
+
+        batch_size = self.training_hyperparams.batch_size
 
         losses = []
 
@@ -205,9 +201,9 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 losses.append(l2_loss.item())
 
             # Early stopping if loss has stopped fluctuating
-            if self.training_hyperparams["early_stopping"]:
-                if len(losses) >= self.training_hyperparams["early_stopping_patience"]:
-                    losses_window = losses[-self.training_hyperparams["early_stopping_patience"] :]
+            if self.training_hyperparams.early_stopping:
+                if len(losses) >= self.training_hyperparams.early_stopping_patience:
+                    losses_window = losses[-self.training_hyperparams.early_stopping_patience :]
                     if np.max(losses_window) - np.min(losses_window) < 1e-6:
                         break
             scheduler.step()

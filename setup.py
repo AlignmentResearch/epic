@@ -36,9 +36,9 @@ DEV_REQUIRE = [
 ]
 
 setup(
-    name="epic",
+    name="reward-distances",
     version="0.1.0",
-    description="Epic implements the Equivalent-Policy Invariant Comparison (EPIC) " "distance for reward functions.",
+    description="Reward Distances implements distance metrics to compare reward functions.",
     long_description=get_readme(),
     long_description_content_type="text/markdown",
     packages=find_packages("src"),

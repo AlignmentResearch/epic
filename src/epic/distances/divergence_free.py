@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-from stable_baselines3.common.utils import configure_logger
+from stable_baselines3.common.logger import make_output_format, Figure
 
 import matplotlib.pyplot as plt
 
@@ -29,8 +29,9 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         architecture_hyperparams: Optional[types.PotentialArchitectureHyperparams] = None,
         training_hyperparams: Optional[types.PotentialTrainingHyperparams] = None,
         use_logger: bool = False,
-        tensorboard_log: Optional[str] = None,
-        tb_log_name: str = "",
+        log_dir: Optional[str] = None,
+        log_suffix: str = "",
+        store_train_stats: bool = False,
     ):
         """Initialize the Divergence-Free Reward Distance.
 
@@ -40,8 +41,9 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
           architecture_hyperparams: A dataclass keeping track of different hyperparameters for the neural network architecture.
           training_hyperparams: A dataclass keeping track of different hyperparameters for the neural network training.
           use_logger: Whether or not to configure and use a logger.
-          tensorboard_log: The path to the tensorboard log directory.
-          tb_log_name: The name of the tensorboard log.
+          log_dir: The directory to store the log files in.
+          log_suffix: A suffix to append to the log files.
+          store_train_stats: Whether or not to store statistics from the training run.
 
         """
         super().__init__(discount_factor, coverage_sampler)
@@ -54,8 +56,13 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         )
         self.training_hyperparams = training_hyperparams or types.PotentialTrainingHyperparams()
 
-        if use_logger:
-            self.logger = configure_logger(verbose=1, tensorboard_log=tensorboard_log, tb_log_name=tb_log_name)
+        self.use_logger = use_logger
+        if self.use_logger:
+            self.writer = make_output_format("tensorboard", log_dir=log_dir, log_suffix=log_suffix)
+
+        self.store_train_stats = store_train_stats
+        if self.store_train_stats:
+            self.train_stats = dict()
 
     def canonicalize(
         self,
@@ -178,6 +185,18 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
             assert rew_fn_out.ndim == shaping.ndim, "Reward Function's output shouldn't be broadcasted."
             return rew_fn_out + shaping
 
+        if self.use_logger:
+            self.writer.write(
+                dict(
+                    training_hyperparams=self.training_hyperparams,
+                    architecture_hyperparams=self.architecture_hyperparams,
+                ),
+                key_excluded=dict(
+                    training_hyperparams=(),
+                    architecture_hyperparams=(),
+                ),
+            )
+
         for _ in tqdm(range(max_epochs)):
             transitions_dataset.shuffle()
             for i in range(len(transitions_dataset) // batch_size):
@@ -210,8 +229,17 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                     if np.max(losses_window) - np.min(losses_window) < 1e-6:
                         break
             scheduler.step()
-        plt.plot(losses)
-        plt.show()
+        if self.use_logger:
+            self.writer.write(dict(losses=losses), key_excluded=dict(losses=()))
+            fig = plt.figure()
+            fig.add_subplot().plot(losses, label="Loss", color="blue")
+            fig.add_subplot().set_xlabel("Epochs")
+            fig.add_subplot().set_ylabel("Loss")
+            figure = Figure(figure=fig, close=True)
+            self.writer.write(dict(figure=figure), key_excluded=dict(figure=()))
+
+        if self.store_train_stats:
+            self.train_stats[f"losses_{len(self.train_stats.keys())}"] = losses
 
         return canonical_reward_fn
 

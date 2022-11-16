@@ -87,7 +87,9 @@ def test_tensor_from_numpy():
         gpu_tens = utils.float_tensor_from_numpy(arr, "cuda")
 
         assert gpu_tens.shape == arr.shape
-        assert gpu_tens.device == torch.device("cuda")
+        assert gpu_tens.device.type == "cuda"
+        assert (gpu_tens.cpu() == cpu_tens).all()
+        assert (cpu_tens.cuda() == gpu_tens).all()
 
 
 def test_numpy_from_tensor():

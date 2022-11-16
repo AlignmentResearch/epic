@@ -38,12 +38,15 @@ class PotentialArchitectureHyperparams:
     Args:
         depth: Number of Residual MLP layers in the potential function.
         hidden_dim: Dimension of the hidden layers in the potential function.
+        use_norm: Whether to include a LayerNorm at the beginning of each Residual Block.
     """
 
     depth: int = 1
     hidden_dim: int = 128
+    use_norm: bool = True
 
 
+@dataclass
 class PotentialTrainingHyperparams:
     """Hyperparameters for training the potential function.
 

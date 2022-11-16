@@ -1,7 +1,7 @@
 import gym
 import numpy as np
 
-from epic import samplers
+from epic import samplers, types
 from epic.distances import divergence_free
 import einops
 
@@ -27,7 +27,7 @@ def rew_fn_2(state, action, next_state, _):
 
 
 def rew_fn_2_potential_shaping(state, action, next_state, _):
-    return action + np.log(next_state + 1) - state**2 + 3 * np.sqrt(next_state) - 4 * state
+    return action + np.log(next_state + 1) - state**2 + 3 * np.sqrt(next_state) - 4 * np.sqrt(state)
 
 
 def test_divergence_free_dist_no_errors():
@@ -42,6 +42,7 @@ def test_divergence_free_dist_no_errors():
             samplers.GymSpaceSampler(space=action_space),
             samplers.DummyGymStateSampler(space=state_space),
         ),
+        training_hyperparams=types.PotentialTrainingHyperparams(batch_size=100),
         discount_factor=1,
     ).distance(x, y, n_samples_cov=100, n_samples_can=100)
 
@@ -61,6 +62,7 @@ def test_divergence_free_dist_reward_equivalence_constant_reward():
             samplers.GymSpaceSampler(space=action_space),
             samplers.DummyGymStateSampler(space=state_space),
         ),
+        training_hyperparams=types.PotentialTrainingHyperparams(batch_size=2500),
         discount_factor=1,
     ).distance(x, y, n_samples_cov=500, n_samples_can=2500)
 
@@ -81,6 +83,7 @@ def test_divergence_free_dist_reward_equivalence_constant_reward_multiple_dims()
             samplers.GymSpaceSampler(space=action_space),
             samplers.DummyGymStateSampler(space=state_space),
         ),
+        training_hyperparams=types.PotentialTrainingHyperparams(batch_size=2500),
         discount_factor=1,
     ).distance(x, y, n_samples_cov=500, n_samples_can=2500)
 
@@ -101,6 +104,7 @@ def test_divergence_free_dist_reward_equivalence_constant_reward_multiple_dims_c
             samplers.GymSpaceSampler(space=action_space),
             samplers.DummyGymStateSampler(space=state_space),
         ),
+        training_hyperparams=types.PotentialTrainingHyperparams(batch_size=10000),
         discount_factor=1,
     ).distance(x, y, n_samples_cov=500, n_samples_can=10000)
 
@@ -121,6 +125,7 @@ def test_divergence_free_dist_reward_equivalence_linear_reward():
             samplers.GymSpaceSampler(space=action_space),
             samplers.DummyGymStateSampler(space=state_space),
         ),
+        training_hyperparams=types.PotentialTrainingHyperparams(batch_size=300000),
         discount_factor=1,
     ).distance(x, y, n_samples_cov=10000, n_samples_can=300000)
 
@@ -141,6 +146,7 @@ def test_divergence_free_dist_reward_equivalence_complex_reward():
             samplers.GymSpaceSampler(space=action_space),
             samplers.DummyGymStateSampler(space=state_space),
         ),
+        training_hyperparams=types.PotentialTrainingHyperparams(batch_size=400000),
         discount_factor=0.75,
     ).distance(x, y, n_samples_cov=10000, n_samples_can=400000)
 

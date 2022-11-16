@@ -81,6 +81,9 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
                 *[
                     torch_modules.Residual(
                         nn.Sequential(
+                            nn.LayerNorm(self.architecture_hyperparams.hidden_dim)
+                            if self.architecture_hyperparams.use_norm
+                            else nn.Identity(),
                             nn.Linear(
                                 self.architecture_hyperparams.hidden_dim, self.architecture_hyperparams.hidden_dim
                             ),

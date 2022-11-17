@@ -116,14 +116,13 @@ class EPIC(pearson_mixin.PearsonMixin, base.Distance):
             # This does not require cartesian product over batches
             # as it's not a random variable.
             term_3 = np.mean(
-                rew_fn(
+                reward_function(
                     state_sample,
                     action_sample,
                     next_state_sample,
                     done_sample,
-                    batch_dims=2,
                 ),
-                axis=0,
+                axis=1,
             )
 
             return (

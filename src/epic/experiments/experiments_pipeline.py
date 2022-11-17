@@ -133,36 +133,36 @@ pref_comparisons_1.train(
     total_comparisons=5_000,  # For good performance this should be 5_000
 )
 
-learned_reward_venv_0 = RewardVecEnvWrapper(venv, reward_net_0.predict)
-learned_reward_venv_1 = RewardVecEnvWrapper(venv, reward_net_0.predict)
+# learned_reward_venv_0 = RewardVecEnvWrapper(venv, reward_net_0.predict)
+# learned_reward_venv_1 = RewardVecEnvWrapper(venv, reward_net_0.predict)
 # %%
-learner_0 = PPO(
-    policy=MlpPolicy,
-    env=learned_reward_venv_0,
-    seed=0,
-    batch_size=64,
-    ent_coef=0.0,
-    learning_rate=0.0003,
-    n_epochs=10,
-    n_steps=64,
-)
-learner_0.learn(100000)
-learner_1 = PPO(
-    policy=MlpPolicy,
-    env=learned_reward_venv_1,
-    seed=0,
-    batch_size=64,
-    ent_coef=0.0,
-    learning_rate=0.0003,
-    n_epochs=10,
-    n_steps=64,
-)
-learner_1.learn(100000)
+# learner_0 = PPO(
+#     policy=MlpPolicy,
+#     env=learned_reward_venv_0,
+#     seed=0,
+#     batch_size=64,
+#     ent_coef=0.0,
+#     learning_rate=0.0003,
+#     n_epochs=10,
+#     n_steps=64,
+# )
+# learner_0.learn(100000)
+# learner_1 = PPO(
+#     policy=MlpPolicy,
+#     env=learned_reward_venv_1,
+#     seed=0,
+#     batch_size=64,
+#     ent_coef=0.0,
+#     learning_rate=0.0003,
+#     n_epochs=10,
+#     n_steps=64,
+# )
+# learner_1.learn(100000)
 # %%
-reward_0, _ = evaluate_policy(learner_0, learned_reward_venv_0, n_eval_episodes=10)
-reward_1, _ = evaluate_policy(learner_1, learned_reward_venv_1, n_eval_episodes=10)
-print(f"Reward 0: {reward_0}")
-print(f"Reward 1: {reward_1}")
+# reward_0, _ = evaluate_policy(learner_0, learned_reward_venv_0, n_eval_episodes=10)
+# reward_1, _ = evaluate_policy(learner_1, learned_reward_venv_1, n_eval_episodes=10)
+# print(f"Reward 0: {reward_0}")
+# print(f"Reward 1: {reward_1}")
 
 reward_net_0.eval()
 reward_net_1.eval()
@@ -180,7 +180,7 @@ dist_div_free = divergence_free.DivergenceFree(
     ),
     discount_factor=1.0,
     training_hyperparams=types.PotentialTrainingHyperparams(),
-).distance(reward_0_fn, reward_1_fn, n_samples_cov=50000, n_samples_can=200000)
+).distance(reward_0_fn, reward_1_fn, n_samples_cov=60000, n_samples_can=100000)
 print(f"Div-free distance: {dist_div_free}")
 # %%
 reward_0_fn_epic = epic_imitation.reward_net_to_fn(reward_net_0, device="cpu")
@@ -189,7 +189,7 @@ dist_epic = epic.EPIC(
     action_sampler=samplers.GymSpaceSampler(venv.action_space),
     state_sampler=samplers.DummyGymStateSampler(venv.observation_space),
     discount_factor=1.0,
-).distance(reward_0_fn_epic, reward_1_fn_epic, n_samples_cov=500, n_samples_can=500)
+).distance(reward_0_fn_epic, reward_1_fn_epic, n_samples_cov=400, n_samples_can=400)
 print(f"EPIC distance: {dist_epic}")
 # %%
 

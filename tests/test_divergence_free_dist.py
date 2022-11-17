@@ -108,9 +108,9 @@ def test_divergence_free_dist_reward_equivalence_constant_reward_multiple_dims_c
             samplers.DummyGymStateSampler(space=state_space),
         ),
         architecture_hyperparams=types.PotentialArchitectureHyperparams(use_norm=False),
-        training_hyperparams=types.PotentialTrainingHyperparams(batch_size=100000),
+        training_hyperparams=types.PotentialTrainingHyperparams(batch_size=200000, max_epochs=12000),
         discount_factor=1,
-    ).distance(x, y, n_samples_cov=5000, n_samples_can=100000)
+    ).distance(x, y, n_samples_cov=10000, n_samples_can=200000)
 
     print(dist)
 

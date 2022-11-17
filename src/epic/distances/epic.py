@@ -115,18 +115,26 @@ class EPIC(pearson_mixin.PearsonMixin, base.Distance):
             # E[R(S, A, S')]. We sample state, action, and next state.
             # This does not require cartesian product over batches
             # as it's not a random variable.
-            term_3 = np.mean(
-                reward_function(
-                    state_sample,
-                    action_sample,
-                    next_state_sample,
-                    done_sample,
-                ),
-                axis=1,
+
+            # TODO: I'm pretty sure this is correct, but should be possible to make this vectorized.
+            # Also very possible that what was here previously was also correct.
+            term_3 = np.array(
+                [
+                    np.mean(
+                        reward_function(
+                            state_sample[i],
+                            action_sample[i],
+                            next_state_sample[i],
+                            done_sample[i],
+                        ),
+                        axis=0,
+                    )
+                    for i in range(n_samples_cov)
+                ]
             )
 
             return (
-                rew_fn(
+                reward_function(
                     state,
                     action,
                     next_state,

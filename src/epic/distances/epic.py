@@ -123,7 +123,6 @@ class EPIC(pearson_mixin.PearsonMixin, base.Distance):
                     done_sample,
                     batch_dims=2,
                 ),
-                axis=0,
             )
 
             return (

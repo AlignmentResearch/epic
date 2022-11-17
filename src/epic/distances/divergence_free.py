@@ -48,8 +48,8 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         """
         super().__init__(discount_factor, coverage_sampler)
 
-        state_sample, _, _, _ = self.coverage_sampler.sample(1)
-        self.state_dim = int(np.prod(state_sample.shape))
+        _, state_sample, _, _ = self.coverage_sampler.sample(1)
+        self.state_dim = int(np.prod(state_sample.shape[1:])) if len(state_sample.shape) > 1 else state_sample.shape[0]
 
         self.architecture_hyperparams = architecture_hyperparams or types.PotentialArchitectureHyperparams(
             hidden_dim=max(4 * self.state_dim, 128)
@@ -200,7 +200,7 @@ class DivergenceFree(pearson_mixin.PearsonMixin, base.Distance):
         for _ in tqdm(range(max_epochs)):
             transitions_dataset.shuffle()
             for i in range(len(transitions_dataset) // batch_size):
-                state_sample, action_sample, next_state_sample, done_sample = transitions_dataset[
+                action_sample, state_sample, next_state_sample, done_sample = transitions_dataset[
                     i * batch_size : (i + 1) * batch_size
                 ]
 
@@ -249,8 +249,6 @@ def divergence_free_distance(
     y,
     /,
     *,
-    state_sampler,
-    action_sampler,
     coverage_sampler,
     discount_factor,
     n_samples_cov: int,
@@ -264,16 +262,12 @@ def divergence_free_distance(
     Args:
       x: The first reward function.
       y: The second reward function.
-      state_sampler: The sampler for the state distribution. Optional if the coverage_sampler is provided.
-      action_sampler: The sampler for the action distribution. Optional if the coverage_sampler is provided.
-      coverage_sampler: The sampler for the coverage distribution. If not given,
-        a default sampler is constructed as drawing from the product
-        distribution induced by the distributions of state and action.
+      coverage_sampler: The sampler for the coverage distribution.
       discount_factor: The discount factor.
       n_samples_cov: The number of samples to use for the coverage distance.
       n_samples_can: The number of samples to use for the canonicalization.
     """
-    return DivergenceFree(discount_factor, state_sampler, action_sampler, coverage_sampler).distance(
+    return DivergenceFree(discount_factor, coverage_sampler).distance(
         x,
         y,
         n_samples_cov,

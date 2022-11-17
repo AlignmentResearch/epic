@@ -21,8 +21,8 @@ class TransitionsDataset(Dataset):
 
     def __init__(
         self,
-        state: npt.NDArray,
         action: npt.NDArray,
+        state: npt.NDArray,
         next_state: npt.NDArray,
         done: npt.NDArray,
     ):
@@ -33,13 +33,13 @@ class TransitionsDataset(Dataset):
         self.done = done
 
     def __getitem__(self, idx):
-        return self.state[idx], self.action[idx], self.next_state[idx], self.done[idx]
+        return self.action[idx], self.state[idx], self.next_state[idx], self.done[idx]
 
     def __len__(self):
         return self.state.shape[0]
 
     def shuffle(self):
-        np.random.shuffle(self.state)
         np.random.shuffle(self.action)
+        np.random.shuffle(self.state)
         np.random.shuffle(self.next_state)
         np.random.shuffle(self.done)

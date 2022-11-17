@@ -38,11 +38,11 @@ class PearsonMixin:
             float: The Pearson Distance between two reward functions, with special casing for one or both of the reward functions being constant. If both functions are constant, the distance is 0. If one function is constant, the distance is hard-coded to 0.5.
         """
         if isinstance(self.coverage_sampler, samplers.BaseDatasetSampler):
-            state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample = self.coverage_sampler.sample(
+            action_cov_sample, state_cov_sample, next_state_cov_sample, done_cov_sample = self.coverage_sampler.sample(
                 n_samples_cov,
             )
         else:
-            state_cov_sample, action_cov_sample, next_state_cov_sample, done_cov_sample = self.coverage_sampler.sample(
+            action_cov_sample, state_cov_sample, next_state_cov_sample, done_cov_sample = self.coverage_sampler.sample(
                 n_samples_cov or self.default_samples_cov,
             )
 

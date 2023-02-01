@@ -163,8 +163,8 @@ def epic_distance(
         state_sampler: A sampler for the state space.
         action_sampler: A sampler for the action space.
         discount_factor: The discount factor of the MDP.
-        nested: Whether sampling is nested over any expectation operators. See
-            ``EPIC.canonicalize`` for more details.
+        n_samples_cov: The number of samples to use for the coverage distribution.
+        n_samples_can: The number of samples to use for the canonical distribution.
 
     Returns:
         The EPIC distance between the two reward functions.

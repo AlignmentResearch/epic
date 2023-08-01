@@ -11,7 +11,7 @@ def rew_fn_1(state, action, next_state, _):
 
 
 def rew_fn_2(state, action, next_state, _):
-    return state**2 + next_state**2 + 2 * action
+    return state**3 + next_state**0.5 + 2 * np.log(action + 1)
 
 
 def rew_fn_1_potential_shaping(state, action, next_state, _):

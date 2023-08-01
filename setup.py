@@ -10,7 +10,7 @@ def get_readme() -> str:
 
 
 IMITATION_REQUIRE = [
-    'imitation @ git+https://github.com/HumanCompatibleAI/imitation.git@master',
+    "imitation @ git+https://github.com/HumanCompatibleAI/imitation.git@master",
     "stable_baselines3",
     "seals @ git+https://github.com/HumanCompatibleAI/seals.git@master",
 ]
@@ -36,27 +36,27 @@ DEV_REQUIRE = [
 ]
 
 setup(
-    name='epic',
-    version='0.1.0',
-    description='Epic implements the Equivalent-Policy Invariant Comparison (EPIC) '
-                'distance for reward functions.',
+    name="reward-distances",
+    version="0.1.0",
+    description="Reward Distances implements distance metrics to compare reward functions.",
     long_description=get_readme(),
-    long_description_content_type='text/markdown',
+    long_description_content_type="text/markdown",
     packages=find_packages("src"),
     package_dir={"": "src"},
     package_data={"imitation": ["py.typed"]},
-    python_requires='>=3.9',
+    python_requires=">=3.8",
     install_requires=[
-        'numpy',
-        'torch',
-        ],
+        "numpy",
+        "torch",
+        "einops",
+    ],
     tests_require=TESTS_REQUIRE,
     extras_require={
         "dev": DEV_REQUIRE,
         "test": TESTS_REQUIRE,
         "imitation": IMITATION_REQUIRE,
     },
-    url='https://github.com/HumanCompatibleAI/epic',
+    url="https://github.com/HumanCompatibleAI/epic",
     license="MIT",
     classifiers=[
         "License :: OSI Approved :: MIT License",

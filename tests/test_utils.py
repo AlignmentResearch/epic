@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import pytest
 
 from epic import utils
@@ -72,3 +73,35 @@ def test_broadcast_rew_fn(n_dims, n_samples_can):
     assert (action_b[:, 0] == action_b[:, 1]).all()
     assert (next_state_b[:, 0] == next_state_b[:, 1]).all()
     assert (done_b[:, 0] == done_b[:, 1]).all()
+
+
+def test_tensor_from_numpy():
+    arr = np.random.randn(2, 7)
+
+    cpu_tens = utils.float_tensor_from_numpy(arr, "cpu")
+
+    assert cpu_tens.shape == arr.shape
+    assert cpu_tens.device == torch.device("cpu")
+
+    if torch.cuda.is_available():
+        gpu_tens = utils.float_tensor_from_numpy(arr, "cuda")
+
+        assert gpu_tens.shape == arr.shape
+        assert gpu_tens.device.type == "cuda"
+        assert (gpu_tens.cpu() == cpu_tens).all()
+        assert (cpu_tens.cuda() == gpu_tens).all()
+
+
+def test_numpy_from_tensor():
+    cpu_tensor = torch.randn(2, 7)
+
+    cpu_arr = utils.numpy_from_tensor(cpu_tensor)
+
+    assert cpu_arr.shape == cpu_tensor.shape
+
+    if torch.cuda.is_available():
+        gpu_tensor = cpu_tensor.cuda()
+
+        gpu_arr = utils.numpy_from_tensor(gpu_tensor)
+
+        assert np.array_equal(cpu_arr, gpu_arr)

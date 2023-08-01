@@ -27,19 +27,13 @@ class Distance(abc.ABC):
     form.
     """
 
-    state_sampler: samplers.BaseSampler[samplers.StateSample]
-    action_sampler: samplers.BaseSampler[npt.NDArray]
     coverage_sampler: samplers.BaseSampler[samplers.CoverageSample]
 
     def __init__(
         self,
-        state_sampler: samplers.BaseSampler[samplers.StateSample],
-        action_sampler: samplers.BaseSampler[npt.NDArray],
-        coverage_sampler: samplers.BaseSampler[samplers.CoverageSample],
         discount_factor: float,
+        coverage_sampler: samplers.BaseSampler[samplers.CoverageSample],
     ):
-        self.state_sampler = state_sampler
-        self.action_sampler = action_sampler
         self.coverage_sampler = coverage_sampler
         self.discount_factor = discount_factor
 
@@ -82,6 +76,7 @@ class Distance(abc.ABC):
         Returns:
             The distance between the two reward functions.
         """
+        raise NotImplementedError
 
     def distance(
         self,
